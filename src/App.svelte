@@ -1,15 +1,17 @@
 <script lang="ts">
   import Preview from "./components/Preview.svelte";
   import {
+    appView,
     canvasStream,
+    inputEvents,
     isRecording,
+    lastRecording,
     micState,
     recordingStartTime,
   } from "./stores";
   import ActionBar from "./components/ActionBar.svelte";
-  import SidebarThemeSection from "./components/SidebarThemeSection.svelte";
-  import FormidableIcon from "./components/icons/formidable.icon.svelte";
-  import GithubIcon from "./components/icons/github.icon.svelte";
+  import ReviewView from "./components/ReviewView.svelte";
+  import RecorderSidebar from "./components/RecorderSidebar.svelte";
   import { patchBlob } from "./utils/blobHelpers";
   import { getPreferredMimeType } from "./utils/getPreferredMimeType";
 
@@ -26,28 +28,32 @@
 
     const completeBlob = new Blob(chunks, { type: chunks[0].type });
     const newBlob = await patchBlob(completeBlob, duration);
-    const data = URL.createObjectURL(newBlob);
+    const videoUrl = URL.createObjectURL(newBlob);
+    const fileName = `video.${ext}`;
 
-    const link = document.createElement("a");
-    link.href = data;
-    link.download = `video.${ext}`;
-    link.dispatchEvent(
-      new MouseEvent("click", {
-        bubbles: true,
-        cancelable: false,
-        view: window,
-      })
-    );
+    if ($lastRecording?.videoUrl) {
+      try {
+        URL.revokeObjectURL($lastRecording.videoUrl);
+      } catch (err) {
+        console.warn("Failed to revoke previous recording URL", err);
+      }
+    }
 
-    setTimeout(() => {
-      URL.revokeObjectURL(data);
-      link.remove();
-    }, 500);
+    $lastRecording = {
+      videoUrl,
+      events: $inputEvents,
+      fileName,
+    };
+
+    $appView = "review";
   };
 
   const startRecording = () => {
     $recordingStartTime = performance.now();
     chunks.length = 0;
+
+    $inputEvents = [];
+    $appView = "recorder";
 
     const combinedStream = new MediaStream([
       ...($canvasStream?.getTracks() || []),
@@ -76,44 +82,23 @@
 </script>
 
 <div
-  class="w-screen h-screen overflow-hidden bg-fmd-white p-0 sm:p-3 md:pr-0 sm:p-3 md:pr-0 flex items-center relative dark:bg-fmd-navy"
+  class="relative h-screen w-screen overflow-hidden bg-gradient-to-br from-slate-100 via-white to-slate-200 dark:from-slate-900 dark:via-slate-900 dark:to-slate-950"
 >
-  <div class="w-full flex gap-12 mr-0 ml-9 h-full">
-    <div
-      class="relative flex flex-col gap-4 flex-grow max-w-[calc(100%-350px)]"
-    >
-      <div class="flex-grow overflow-hidden">
-        <Preview />
+  {#if $appView === "recorder"}
+    <div class="grid h-full w-full grid-rows-[minmax(0,1fr)_auto] gap-5 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_26rem] lg:grid-rows-1 lg:gap-8 lg:px-8">
+      <div class="flex min-w-0 flex-col gap-4">
+        <div class="relative flex-1 overflow-hidden rounded-3xl shadow-xl backdrop-blur-sm">
+          <Preview />
+        </div>
+        <div class="rounded-3xl border border-slate-200/80 bg-white/80 shadow-lg backdrop-blur-md dark:border-slate-800/80 dark:bg-slate-900/70">
+          <ActionBar on:record={onRecordButtonPress} />
+        </div>
       </div>
-      <ActionBar on:record={onRecordButtonPress} />
+      <RecorderSidebar />
     </div>
-    <div
-      class="border-l border-fmd-gray w-1/3 flex flex-col gap-10 px-6 dark:border-fmd-blue"
-    >
-      <SidebarThemeSection />
+  {:else}
+    <div class="w-full h-full mr-0 ml-0 sm:ml-0 sm:mr-0">
+      <ReviewView />
     </div>
-  </div>
-
-  <div
-    class="absolute bottom-0 right-0 p-4 flex gap-4 items-center text-fmd-black dark:text-fmd-white"
-  >
-    <a
-      class="w-10 hover:text-fmd-red transition transition-colors duration-100 ease-in-out"
-      aria-label="Formidable logo"
-      href="https://formidable.com"
-      target="_blank"
-      rel="noreferrer"
-    >
-      <FormidableIcon />
-    </a>
-    <a
-      class="w-7 hover:text-fmd-red transition transition-colors duration-100 ease-in-out"
-      aria-label="GitHub logo"
-      href="https://github.com/FormidableLabs/clips"
-      target="_blank"
-      rel="noreferrer"
-    >
-      <GithubIcon />
-    </a>
-  </div>
+  {/if}
 </div>

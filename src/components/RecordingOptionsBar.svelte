@@ -7,7 +7,7 @@
     recordingFPS,
     recordingFPSOptions,
   } from "../stores.js";
-  import Select from "./Select.svelte";
+  import Select from "./ui/Select.svelte";
 </script>
 
 <div

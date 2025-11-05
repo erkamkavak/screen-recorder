@@ -1,11 +1,11 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
-  import ActionButton from "./ActionButton.svelte";
+  import ActionButton from "./ui/ActionButton.svelte";
   import Camera from "./icons/camera.icon.svelte";
   import { webcamState } from "../stores";
-  import PopupContainer from "./PopupContainer.svelte";
-  import TextButton from "./TextButton.svelte";
-  import Loader from "./Loader.svelte";
+  import PopupContainer from "./ui/PopupContainer.svelte";
+  import TextButton from "./ui/TextButton.svelte";
+  import Loader from "./ui/Loader.svelte";
 
   let isPopupOpen = false;
 

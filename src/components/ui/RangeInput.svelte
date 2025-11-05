@@ -1,5 +1,6 @@
 <script lang="ts">
   import clsx from "clsx";
+  import { createEventDispatcher } from "svelte";
   import InputLabel from "./InputLabel.svelte";
 
   export let name: string;
@@ -10,6 +11,14 @@
   export let min = 0;
   export let max = 1;
   export let step = 0.05;
+
+  const dispatch = createEventDispatcher<{ input: number }>();
+
+  const handleInput = (event: Event) => {
+    const target = event.target as HTMLInputElement;
+    const newValue = Number(target.value);
+    dispatch("input", newValue);
+  };
 </script>
 
 <div>
@@ -17,7 +26,8 @@
   <div
     class={clsx(
       "mt-1",
-      showPercentage && "grid grid-cols-[1fr_32px] gap-3 items-center"
+      "grid items-center gap-3",
+      showPercentage ? "grid-cols-[1fr_32px]" : "grid-cols-[1fr_76px]"
     )}
   >
     <div class="relative flex items-center">
@@ -34,6 +44,7 @@
         {min}
         {max}
         {step}
+        on:input={handleInput}
       />
       <div
         class="absolute left-0 h-1 bg-fmd-red z-10"
@@ -45,6 +56,16 @@
       <div class="text-xs dark:text-white text-right">
         {Math.floor((value / max) * 100)}%
       </div>
+    {:else}
+      <input
+        type="number"
+        class="h-8 w-[50px] rounded-md border border-slate-200 bg-white px-2 text-right text-xs text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+        {min}
+        {max}
+        {step}
+        bind:value
+        on:input={handleInput}
+      />
     {/if}
   </div>
 </div>

@@ -1,27 +1,124 @@
 <script lang="ts">
-  import ActionButton from "./ActionButton.svelte";
+  import ActionButton from "./ui/ActionButton.svelte";
   import type { Share } from "../stores";
   import { screenShareState } from "../stores.js";
   import { onMount } from "svelte";
   import LoadingDots from "./icons/loadingDots.icon.svelte";
   import CloseIcon from "./icons/close.icon.svelte";
   import clsx from "clsx";
+  import { clickOutside } from "../directives/clickOutside";
+
+  type DesktopSourceSummary = {
+    id: string;
+    name: string;
+    thumbnail: string | null;
+  };
 
   export let share: Share;
   export let index: number;
   let preview: HTMLVideoElement;
   let isActive: boolean = false;
 
-  onMount(async () => {
+  const isElectron = typeof window !== "undefined" && "electronAPI" in window;
+
+  let isPickerVisible = false;
+  let isLoadingSources = false;
+  let isCapturing = false;
+  let desktopSources: DesktopSourceSummary[] = [];
+  let pickerError: string | null = null;
+
+  const refreshDesktopSources = async () => {
+    if (!isElectron || typeof window.electronAPI?.listDesktopSources !== "function") return;
+
+    isLoadingSources = true;
+    pickerError = null;
+
     try {
-      share.stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+      desktopSources = await window.electronAPI.listDesktopSources({
+        types: ["screen", "window"],
+        thumbnailSize: { width: 480, height: 270 },
       });
+      if (!desktopSources.length) {
+        pickerError = "No capture sources found.";
+      }
+    } catch (error) {
+      console.error("Failed to list desktop capture sources", error);
+      pickerError = (error as Error)?.message ?? "Unable to list capture sources.";
+      desktopSources = [];
+    } finally {
+      isLoadingSources = false;
+    }
+  };
+
+  const startStreamFromSource = async (sourceId: string) => {
+    if (!isElectron || typeof window.electronAPI?.getDesktopSourceId !== "function") return;
+
+    try {
+      isCapturing = true;
+      const resolvedSourceId = await window.electronAPI.getDesktopSourceId({
+        preferredId: sourceId,
+      });
+      if (!resolvedSourceId) {
+        throw new Error("Selected source is no longer available.");
+      }
+
+      const videoConstraints = {
+        mandatory: {
+          chromeMediaSource: "desktop",
+          chromeMediaSourceId: resolvedSourceId,
+        },
+      } as unknown as MediaTrackConstraints;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: videoConstraints,
+      });
+
+      share.stream = stream;
       share.preview.srcObject = share.stream;
       grabDimensions();
       makeActive();
-    } catch {
+      isPickerVisible = false;
+    } catch (error) {
+      console.error("Failed to start screen capture", error);
+      pickerError = (error as Error)?.message ?? "Failed to start capture.";
+    } finally {
+      isCapturing = false;
+    }
+  };
+
+  const startBrowserCapture = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+      });
+      share.stream = stream;
+      share.preview.srcObject = share.stream;
+      grabDimensions();
+      makeActive();
+    } catch (error) {
+      console.error("Failed to start screen capture", error);
       removeShare(index);
+    }
+  };
+
+  const cancelSelection = () => {
+    removeShare(index);
+  };
+
+  const selectSource = async (sourceId: string) => {
+    await startStreamFromSource(sourceId);
+    if (share.stream) {
+      pickerError = null;
+    }
+  };
+
+  onMount(async () => {
+    if (isElectron) {
+      isPickerVisible = true;
+      await refreshDesktopSources();
+    } else {
+      await startBrowserCapture();
     }
   });
 
@@ -105,7 +202,76 @@
       muted
       on:resize={grabDimensions}
     />
-    {#if share.stream}
+    {#if isElectron && isPickerVisible}
+      <div
+        class="absolute bottom-full left-1/2 z-40 -translate-x-1/2 mb-3"
+        use:clickOutside
+        on:outclick={cancelSelection}
+      >
+        <div
+          class="w-[22rem] max-h-80 flex flex-col gap-3 p-4 bg-white dark:bg-fmd-navy/95 rounded-xl shadow-2xl border border-gray-200/80 dark:border-fmd-blue/60"
+        >
+          {#if isLoadingSources || isCapturing}
+            <div class="flex flex-1 items-center justify-center py-8">
+              <LoadingDots />
+            </div>
+          {:else if pickerError}
+          <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center px-2 py-4">
+            <p class="text-sm text-fmd-gray dark:text-fmd-white">{pickerError}</p>
+            <div class="flex gap-2">
+              <button class="px-3 py-1 rounded border border-fmd-gray text-sm" on:click={refreshDesktopSources}>
+                Retry
+              </button>
+              <button class="px-3 py-1 rounded border border-fmd-gray text-sm" on:click={cancelSelection}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        {:else if desktopSources.length === 0}
+          <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center px-4 py-6 text-sm text-gray-600 dark:text-fmd-white">
+            <p>No windows or screens were detected.</p>
+            <p class="text-xs opacity-70">Try opening a window you want to record or use Refresh.</p>
+            <div class="flex gap-2">
+              <button class="px-3 py-1 rounded border border-fmd-gray text-sm" on:click={refreshDesktopSources}>
+                Refresh
+              </button>
+              <button class="px-3 py-1 rounded border border-fmd-gray text-sm" on:click={cancelSelection}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        {:else}
+          <div class="flex-1 overflow-auto pr-1">
+            <div class="grid gap-3 grid-cols-2">
+              {#each desktopSources as source (source.id)}
+                <button
+                  class="flex flex-col items-center gap-2 p-3 rounded-lg border border-transparent hover:border-fmd-red transition bg-white/90 dark:bg-fmd-navy/70 hover:bg-fmd-red/5 dark:hover:bg-fmd-blue/20"
+                  on:click={() => selectSource(source.id)}
+                >
+                  {#if source.thumbnail}
+                    <img src={source.thumbnail} alt={source.name} class="w-28 h-16 object-cover rounded-md shadow-sm" />
+                  {:else}
+                    <div class="w-28 h-16 bg-gray-200 rounded-md" />
+                  {/if}
+                  <span class="text-xs text-gray-700 dark:text-white font-medium text-center leading-tight break-words w-full">
+                    {source.name}
+                  </span>
+                </button>
+              {/each}
+            </div>
+          </div>
+          <div class="flex justify-between pt-1 text-xs">
+            <button class="px-3 py-1 border border-fmd-gray rounded" on:click={refreshDesktopSources}>
+              Refresh
+            </button>
+            <button class="px-3 py-1 border border-fmd-gray rounded" on:click={cancelSelection}>
+              Cancel
+            </button>
+          </div>
+        {/if}
+        </div>
+      </div>
+    {:else if share.stream}
       <video class="h-full" autoplay playsinline muted bind:this={preview} />
       <button
         on:click={(event) => stopSharing(event, index)}

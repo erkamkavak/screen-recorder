@@ -1,100 +1,112 @@
 import type { DrawFn } from "../stores";
 import { HorizAlign, VertAlign, WebcamShape } from "../stores";
 import { circleClip, roundedRectClip } from "./drawUtils";
+import { calculateWebcamMetrics } from "./webcamMetrics";
 
-export const drawWebcam: DrawFn = (args, webcamX, webcamY) => {
-  if (args.webcamState.stream) {
-    const {
-      ctx,
-      webcamState,
-      theme,
-      webcamLayoutState,
-      canvasSize,
-      generalLayoutState,
-    } = args;
-    const { size, shape } = webcamLayoutState;
-    const { padding } = generalLayoutState;
+export const drawWebcam: DrawFn = (args) => {
+  if (!args.webcamState.stream || !args.webcamState.preview) return;
 
-    const { width, height } = canvasSize;
-    const pad = (padding * Math.min(width, height)) / 4;
+  const { ctx, webcamState, webcamLayoutState, canvasSize } = args;
 
-    let x0 = webcamX * width;
-    let y0 = webcamY * height;
+  const metrics = calculateWebcamMetrics({
+    layout: webcamLayoutState,
+    containerWidth: canvasSize.width,
+    containerHeight: canvasSize.height,
+    videoWidth: webcamState.width,
+    videoHeight: webcamState.height,
+  });
 
-    // Circle webcam
-    if (shape === WebcamShape.circle) {
-      // Determine diameter of resulting circle
-      const maxD = Math.min(width, height) - 2 * pad;
-      const diam = size * maxD;
-      const aR = webcamState.height / webcamState.width;
+  const borderWidth = webcamLayoutState.borderWidth ?? 0;
+  const borderColor = webcamLayoutState.borderColor ?? "#ffffff";
+  const shadowBlur = webcamLayoutState.shadowBlur ?? 0;
+  const shadowOpacity = webcamLayoutState.shadowOpacity ?? 0;
 
-      let _w = diam,
-        _h = _w * aR;
-      if (webcamState.width > webcamState.height) {
-        _h = diam;
-        _w = _h / aR;
-      }
+  const drawWidth = Math.max(metrics.innerWidth, 0);
+  const drawHeight = Math.max(metrics.innerHeight, 0);
+  const drawX = metrics.left + borderWidth;
+  const drawY = metrics.top + borderWidth;
 
-      const webcamRadius = diam / 2;
-
-      x0 += diam / 2;
-      y0 += diam / 2;
-
-      // Accent ring around webcam feed?
-      ctx.globalCompositeOperation = "destination-out";
-      ctx.save();
-      // ctx.lineWidth = webcamAccentWidth * Math.max(width, height);
-      ctx.lineWidth = 2 * pad; // TODO: Make this a setting, padding in general probably ought to be a setting.
-      ctx.strokeStyle = theme.accent;
-      ctx.beginPath();
-      ctx.arc(x0, y0, webcamRadius, 0, 2 * Math.PI);
-      ctx.stroke();
-      ctx.restore();
-      ctx.globalCompositeOperation = "source-over";
-
-      circleClip(ctx, x0, y0, webcamRadius, () => {
-        ctx.drawImage(webcamState.preview, x0 - _w / 2, y0 - _h / 2, _w, _h);
-      });
+  const applyShadow = () => {
+    if (shadowBlur > 0 && shadowOpacity > 0) {
+      ctx.shadowColor = `rgba(0,0,0,${shadowOpacity})`;
+      ctx.shadowBlur = shadowBlur;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = shadowBlur / 2;
     }
-    // Rectangular webcam
-    else if (shape === WebcamShape.initial) {
-      const aR = webcamState.height / webcamState.width;
+  };
 
-      let w = 0,
-        h = 0;
+  ctx.save();
 
-      // Will max out the width
-      if (aR * (width - 2 * pad) <= height - 2 * pad) {
-        w = size * (width - 2 * pad);
-        h = w * aR;
-      }
-      // Will max out the height
-      else {
-        h = size * (height - 2 * pad);
-        w = h / aR;
-      }
+  if (webcamLayoutState.shape === WebcamShape.circle) {
+    const centerX = metrics.left + metrics.width / 2;
+    const centerY = metrics.top + metrics.height / 2;
+    const outerRadius = metrics.outerRadius;
+    const innerRadius = Math.max(metrics.innerRadius, 0);
 
-      const r = (webcamLayoutState.borderRadius * Math.min(w, h)) / 2;
+    const videoAspect = webcamState.height && webcamState.width
+      ? webcamState.height / webcamState.width
+      : 9 / 16;
 
-      // Accent ring around webcam feed?
-      ctx.globalCompositeOperation = "destination-out";
-      roundedRectClip(
-        ctx,
-        x0 - pad / 2,
-        y0 - pad / 2,
-        w + pad,
-        h + pad,
-        r,
-        () => {
-          ctx.fillRect(x0 - pad / 2, y0 - pad / 2, w + pad, h + pad);
-        }
+    const diameter = innerRadius * 2;
+    let videoWidth = diameter;
+    let videoHeight = videoWidth * videoAspect;
+    if (videoHeight < diameter) {
+      videoHeight = diameter;
+      videoWidth = videoHeight / videoAspect;
+    }
+
+    // Draw border ring (no shadow)
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, outerRadius, 0, Math.PI * 2);
+    ctx.fillStyle = borderWidth > 0 ? borderColor : "rgba(0,0,0,0)";
+    ctx.fill();
+
+    // Draw video inside clip with shadow
+    circleClip(ctx, centerX, centerY, innerRadius, () => {
+      applyShadow();
+      ctx.drawImage(
+        webcamState.preview,
+        centerX - videoWidth / 2,
+        centerY - videoHeight / 2,
+        videoWidth,
+        videoHeight
       );
-      ctx.globalCompositeOperation = "source-over";
+      // Reset shadow after drawing
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    });
+  } else {
+    const outerRadius = metrics.outerRadius;
+    const innerRadius = Math.max(metrics.innerRadius, 0);
 
-      roundedRectClip(ctx, x0, y0, w, h, r, () => {
-        ctx.drawImage(webcamState.preview, x0, y0, w, h);
-      });
-    } // End initial
+    // Border fill (no shadow)
+    roundedRectClip(
+      ctx,
+      metrics.left,
+      metrics.top,
+      metrics.width,
+      metrics.height,
+      outerRadius,
+      () => {
+        if (borderWidth > 0) {
+          ctx.fillStyle = borderColor;
+          ctx.fillRect(metrics.left, metrics.top, metrics.width, metrics.height);
+        }
+      }
+    );
+    
+    // Draw video inside inner clip with shadow
+    roundedRectClip(ctx, drawX, drawY, drawWidth, drawHeight, innerRadius, () => {
+      applyShadow();
+      ctx.drawImage(webcamState.preview, drawX, drawY, drawWidth, drawHeight);
+      // Reset shadow after drawing
+      ctx.shadowColor = "transparent";
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    });
   }
 };
 

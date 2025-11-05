@@ -41,6 +41,46 @@ export const recordingDuration = derived(
   null
 );
 
+/**
+ * Input event logging
+ */
+export type PointerEventRecord = {
+  kind: "pointerdown" | "pointerup" | "click" | "pointermove";
+  t: number; // ms since recordingStartTime
+  // normalized coordinates (0..1) within active screen area
+  x?: number;
+  y?: number;
+  button?: number;
+};
+export type KeyEventRecord = {
+  kind: "keydown" | "keyup";
+  t: number; // ms since recordingStartTime
+  key: string;
+  code?: string;
+  ctrl?: boolean;
+  alt?: boolean;
+  shift?: boolean;
+  meta?: boolean;
+};
+export type InputEventRecord = PointerEventRecord | KeyEventRecord;
+
+export const inputEvents = writable<InputEventRecord[]>([]);
+
+export type LastRecording = {
+  videoUrl: string;
+  events: InputEventRecord[];
+  fileName: string;
+} | null;
+export const lastRecording = writable<LastRecording>(null);
+
+export type AppView = "recorder" | "review";
+export const appView = writable<AppView>("recorder");
+
+// Sidebar tabs
+export type SidebarTab = "layout" | "webcam" | "mic";
+export const activeSidebarTab = writable<SidebarTab>("layout");
+
+
 export const recordingFPS = (() => {
   const initFps = localStorage.getItem("recordingFps");
   const store = writable(Number(initFps) || 30);
@@ -97,7 +137,7 @@ export const displayDimensions = derived(screenShareState, ($state) => {
 /**
  * Track webcam stream
  */
-type WebcamState = {
+export type WebcamState = {
   deviceId?: string | null;
   stream?: MediaStream | null;
   preview?: HTMLVideoElement | null;
@@ -400,7 +440,7 @@ export const activeBackground = (() => {
 const generalLayoutStateSchema = z.object({
   padding: z.number().min(0).max(1).optional().default(0.1),
 });
-type GeneralLayoutState = z.infer<typeof generalLayoutStateSchema>;
+export type GeneralLayoutState = z.infer<typeof generalLayoutStateSchema>;
 
 export const generalLayoutState = (() => {
   let initGeneralLayoutState: GeneralLayoutState = {};
@@ -442,7 +482,7 @@ export enum VertAlign {
 }
 
 export enum WebcamShape {
-  initial = "initial",
+  rectangle = "rectangle",
   circle = "circle",
 }
 
@@ -456,10 +496,7 @@ export const verticalAlignmentOptions = [
   VertAlign.center,
   VertAlign.bottom,
 ] as const;
-export const webcamShapeOptions = [
-  WebcamShape.circle,
-  WebcamShape.initial,
-] as const;
+export const webcamShapeOptions = [WebcamShape.circle, WebcamShape.rectangle] as const;
 
 const webcamStateSchema = z.object({
   horizAlign: z
@@ -471,10 +508,36 @@ const webcamStateSchema = z.object({
     .optional()
     .default(VertAlign.bottom),
   shape: z.enum(webcamShapeOptions).optional().default(WebcamShape.circle),
-  size: z.number().min(0).max(1).optional().default(0.4),
-  borderRadius: z.number().min(0).max(1).optional().default(0.05),
+  size: z.number().min(0).max(1).optional().default(0.28),
+  borderRadius: z.number().min(0).max(5).optional().default(0.05),
+  padding: z.number().min(0).max(0.3).optional().default(0.06),
+  borderWidth: z.number().min(0).max(20).optional().default(0),
+  borderColor: z
+    .string()
+    .regex(/^#([0-9a-fA-F]{3}){1,2}$/)
+    .optional()
+    .default("#FFFFFF"),
+  shadowBlur: z.number().min(0).max(60).optional().default(18),
+  shadowOpacity: z.number().min(0).max(1).optional().default(0.25),
+  position: z
+    .enum([
+      "custom",
+      "top-left",
+      "top-right",
+      "bottom-left",
+      "bottom-right",
+      "top-center",
+      "bottom-center",
+      "center",
+      "right-center",
+      "left-center"
+    ])
+    .optional()
+    .default("bottom-right"),
+  offsetX: z.number().min(0).max(1).optional().default(1),
+  offsetY: z.number().min(0).max(1).optional().default(1),
 });
-type WebcamLayoutState = z.infer<typeof webcamStateSchema>;
+export type WebcamLayoutState = z.infer<typeof webcamStateSchema>;
 
 export const webcamLayoutState = (() => {
   let initWebcamState: WebcamLayoutState = {};
@@ -497,6 +560,17 @@ export const webcamLayoutState = (() => {
     _set(webcamState);
   };
 
+  const _update = store.update;
+  store.update = (updater) => {
+    _update((current) => {
+      const next = updater(current);
+      try {
+        localStorage.setItem("webcamState", JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   return store;
 })();
 
@@ -514,7 +588,7 @@ const screenStateSchema = z.object({
     .default(VertAlign.bottom),
   // TODO: border radius?
 });
-type ScreenState = z.infer<typeof webcamStateSchema>;
+export type ScreenState = z.infer<typeof webcamStateSchema>;
 
 export const screenLayoutState = (() => {
   let initScreenState: WebcamLayoutState = {

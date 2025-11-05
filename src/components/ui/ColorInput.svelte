@@ -10,14 +10,26 @@
 
   let isPopupOpen = false;
 
+  // Local color state for the picker; seed when opening
+  let pickerColor: any = value;
+
+  // Propagate picker changes one-way to value
+  $: if (pickerColor && typeof pickerColor === "object" && pickerColor.hex && pickerColor.hex !== value) {
+    value = pickerColor.hex;
+  } else if (typeof pickerColor === "string" && pickerColor !== value) {
+    value = pickerColor;
+  }
+
+
   const handleColorInputButtonClick = () => {
+    pickerColor = value; // sync picker to latest external value when opening
     isPopupOpen = true;
   };
 </script>
 
 <ActionButton
   isActive={false}
-  isSquareVariant={true}
+  isSquareVariant={false}
   showPopupUnder={true}
   isTextVariant={true}
   {rightAlignPopup}
@@ -27,12 +39,12 @@
 >
   <PopupContainer slot="popupContent" title="">
     <div class="transparent-input">
-      <ColorPicker class="h-64 p-2" bind:color={value} />
+      <ColorPicker class="h-64 p-2" bind:color={pickerColor} />
     </div>
   </PopupContainer>
 
   <div class="flex items-center gap-2">
-    <div class="h-6 w-6 rounded" style="background-color: {value};" />
+    <div class="h-6 w-6 rounded border border-slate-300/70 shadow-inner dark:border-slate-700" style="background-color: {value};" />
     {title}
   </div>
 </ActionButton>

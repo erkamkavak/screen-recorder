@@ -1,8 +1,8 @@
 <script lang="ts">
   import { slide } from "svelte/transition";
   import ActionButton from "./ActionButton.svelte";
-  import Mic from "./icons/mic.icon.svelte";
-  import { micState } from "../stores";
+  import Mic from "../icons/mic.icon.svelte";
+  import { micState } from "../../stores";
   import PopupContainer from "./PopupContainer.svelte";
   import TextButton from "./TextButton.svelte";
   import Loader from "./Loader.svelte";

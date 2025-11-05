@@ -1,7 +1,7 @@
 <script lang="ts">
   import clsx from "clsx";
-  import CheckIcon from "./icons/check.icon.svelte";
-  import StopIcon from "./icons/stop.icon.svelte";
+  import CheckIcon from "../icons/check.icon.svelte";
+  import StopIcon from "../icons/stop.icon.svelte";
 
   export let extraClasses: string = "";
   export let isDisabled = false;
