@@ -1,5 +1,18 @@
-const { app, BrowserWindow, ipcMain, desktopCapturer, screen, Menu } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  desktopCapturer,
+  screen,
+  Menu,
+  protocol,
+  dialog,
+} = require("electron");
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
+const { Blob } = require("buffer");
+const fixWebmDuration = require("fix-webm-duration");
 const { uIOhook } = require("uiohook-napi");
 
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -40,6 +53,7 @@ function createWindow() {
 let isCapturingInput = false;
 let mainWindow = null;
 let inputListenersInitialized = false;
+const renderFileDescriptors = new Map();
 
 const normalizeCoordinates = (x, y) => {
   const display = screen.getDisplayNearestPoint({ x, y }) || screen.getPrimaryDisplay();
@@ -122,6 +136,214 @@ const stopInputCapture = () => {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
 
+  const ensureRecordingDir = () => {
+    const storageDir = path.join(app.getPath("temp"), "clips-recordings");
+    try {
+      fs.mkdirSync(storageDir, { recursive: true });
+    } catch {}
+    return storageDir;
+  };
+
+  const recordingDir = ensureRecordingDir();
+  protocol.registerFileProtocol("recording", (request, callback) => {
+    try {
+      const url = new URL(request.url);
+      const requestedPath = path.normalize(decodeURIComponent(url.pathname));
+      if (!requestedPath.startsWith(recordingDir)) {
+        callback({ error: -6 });
+        return;
+      }
+      callback({ path: requestedPath });
+    } catch (error) {
+      console.error("Failed to resolve recording protocol path", error);
+      callback({ error: -2 });
+    }
+  });
+
+  ipcMain.handle("recording:save-asset", async (_event, { fileName, buffer }) => {
+    const dir = ensureRecordingDir();
+    const safeName = `${Date.now()}-${fileName}`;
+    const filePath = path.join(dir, safeName);
+    try {
+      await fs.promises.writeFile(filePath, Buffer.from(buffer));
+      return filePath;
+    } catch (error) {
+      console.error("Failed to save recording asset", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("rendering:start", async (_event, fileName = "rendered.webm") => {
+    const dir = ensureRecordingDir();
+    const safeName = `${Date.now()}-${fileName}`;
+    const filePath = path.join(dir, safeName);
+    
+    const fd = await fs.promises.open(filePath, 'w');
+    renderFileDescriptors.set(filePath, fd);
+    
+    return filePath;
+  });
+
+  ipcMain.handle("rendering:append", async (_event, { filePath, buffer }) => {
+    if (!filePath) return;
+    
+    const fd = renderFileDescriptors.get(filePath);
+    if (fd) {
+      try {
+        await fd.write(Buffer.from(buffer));
+      } catch (error) {
+        console.error('Failed to write render chunk:', error);
+        throw error;
+      }
+    } else {
+      await fs.promises.appendFile(filePath, Buffer.from(buffer));
+    }
+  });
+
+  const patchWebmDuration = async (filePath, durationMs) => {
+    const fd = renderFileDescriptors.get(filePath);
+    if (fd) {
+      await fd.close();
+      renderFileDescriptors.delete(filePath);
+    }
+    
+    const stats = await fs.promises.stat(filePath);
+    const fileSize = stats.size;
+    
+    if (fileSize > 100 * 1024 * 1024) {
+      console.warn(`Skipping duration patch for large file (${(fileSize / 1024 / 1024).toFixed(1)}MB)`);
+      return;
+    }
+    
+    try {
+      const data = await fs.promises.readFile(filePath);
+      const blob = new Blob([data], { type: "video/webm" });
+      
+      await new Promise((resolve, reject) => {
+        fixWebmDuration(
+          blob,
+          durationMs,
+          async (patchedBlob) => {
+            try {
+              const arrayBuffer = await patchedBlob.arrayBuffer();
+              await fs.promises.writeFile(filePath, Buffer.from(arrayBuffer));
+              resolve();
+            } catch (writeError) {
+              reject(writeError);
+            }
+          },
+          { logger: false }
+        );
+      });
+      
+      if (global.gc) {
+        global.gc();
+      }
+    } catch (error) {
+      console.error('Failed to patch WebM duration:', error);
+    }
+  };
+
+  ipcMain.handle("rendering:patch", async (_event, { filePath, durationMs }) => {
+    if (!filePath) return false;
+    
+    try {
+      await patchWebmDuration(filePath, durationMs);
+      return true;
+    } catch (error) {
+      console.error('Duration patching failed:', error);
+      const fd = renderFileDescriptors.get(filePath);
+      if (fd) {
+        try {
+          await fd.close();
+        } catch {}
+        renderFileDescriptors.delete(filePath);
+      }
+      return false;
+    }
+  });
+
+  ipcMain.handle("rendering:cancel", async (_event, filePath) => {
+    if (!filePath) return false;
+    
+    const fd = renderFileDescriptors.get(filePath);
+    if (fd) {
+      try {
+        await fd.close();
+      } catch (error) {
+        console.warn('Failed to close file descriptor during cancel:', error);
+      }
+      renderFileDescriptors.delete(filePath);
+    }
+    
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (error) {
+      console.warn('Failed to delete cancelled render file:', error);
+    }
+    
+    return true;
+  });
+
+  ipcMain.handle("rendering:save-file", async (_event, { filePath, fileName }) => {
+    if (!filePath) return null;
+    const downloadsPath = path.join(app.getPath("downloads"));
+    const { canceled, filePath: savePath } = await dialog.showSaveDialog({
+      title: "Save rendered video",
+      defaultPath: path.join(downloadsPath, fileName),
+    });
+    if (canceled || !savePath) {
+      return null;
+    }
+    await fs.promises.copyFile(filePath, savePath);
+    return savePath;
+  });
+
+  ipcMain.handle("recording:read-asset", async (_event, filePath) => {
+    try {
+      const data = await fs.promises.readFile(filePath);
+      return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+    } catch (error) {
+      console.error("Failed to read recording asset", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("recording:cleanup-assets", async (_event, paths = []) => {
+    const dir = ensureRecordingDir();
+    
+    for (const path of paths || []) {
+      const fd = renderFileDescriptors.get(path);
+      if (fd) {
+        try {
+          await fd.close();
+        } catch (error) {
+          console.warn('Failed to close file descriptor:', error);
+        }
+        renderFileDescriptors.delete(path);
+      }
+    }
+    
+    await Promise.all(
+      (paths || []).map((entry) =>
+        fs.promises
+          .unlink(entry)
+          .catch(() => {})
+      )
+    );
+    return true;
+  });
+
+  ipcMain.handle("recording:get-asset-url", async (_event, filePath) => {
+    try {
+      await fs.promises.access(filePath);
+      return new URL(filePath, "recording://").toString();
+    } catch (error) {
+      console.error("Unable to resolve asset URL", error);
+      throw error;
+    }
+  });
+
   ipcMain.on("input-capture:start", () => {
     startInputCapture();
   });
@@ -173,8 +395,24 @@ app.whenReady().then(() => {
   });
 });
 
-app.on("window-all-closed", () => {
+const cleanupFileDescriptors = async () => {
+  for (const [filePath, fd] of renderFileDescriptors.entries()) {
+    try {
+      await fd.close();
+    } catch (error) {
+      console.warn('Failed to close file descriptor on cleanup:', error);
+    }
+  }
+  renderFileDescriptors.clear();
+};
+
+app.on("window-all-closed", async () => {
+  await cleanupFileDescriptors();
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on("before-quit", async () => {
+  await cleanupFileDescriptors();
 });

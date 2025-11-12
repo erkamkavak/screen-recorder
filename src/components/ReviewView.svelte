@@ -1,43 +1,177 @@
 <script lang="ts">
-  import { appView, lastRecording } from "../stores";
+  import {
+    activeBackground,
+    activeTheme,
+    appView,
+    canvasDimensions,
+    generalLayoutState,
+    lastRecording,
+    recordingFPS,
+    screenLayoutState,
+    webcamLayoutState,
+    type RecordingAsset,
+  } from "../stores";
   import type { InputEventRecord, KeyEventRecord, PointerEventRecord } from "../stores";
-  import VideoPlayer from "./VideoPlayer.svelte";
+  import CompositePlayer from "./CompositePlayer.svelte";
   import Timeline from "./Timeline.svelte";
   import { timelineStore } from "../stores/timeline";
-  import { onDestroy } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { ZOOM_DEFAULT_DURATION, ZOOM_DEFAULT_SCALE } from "../utils/zoomDefaults";
-  import { renderEditedRecording } from "../utils/renderEditedRecording";
-  import { patchBlob } from "../utils/blobHelpers";
+import {
+  renderCompositeRecording,
+  type RenderCompositeOptions,
+  type RenderResult,
+} from "../utils/renderEditedRecording";
+  import { getAssetUrlFromFile, disposeAssetUrl } from "../utils/assetStorage";
 
   let videoDuration = 0;
   let videoCurrentTime = 0;
   let isRenderingVideo = false;
   let renderProgress = 0;
 
-  $: clickEvents = $lastRecording
-    ? ($lastRecording.events.filter(
-        (event) => event.kind === "click"
-      ) as PointerEventRecord[])
-    : [];
+  const humanDuration = (secondsTotal: number) => {
+    if (!isFinite(secondsTotal) || secondsTotal <= 0) return "0s";
+    const secs = Math.floor(secondsTotal);
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    const parts: string[] = [];
+    if (h) parts.push(`${h}h`);
+    if (m || h) parts.push(`${m}m`);
+    parts.push(`${s}s`);
+    return parts.join(" ");
+  };
 
-  $: sortedClickEvents = [...clickEvents].sort((a, b) => a.t - b.t);
+  let includePointerTrack = true;
+  let includeWebcamTrack = true;
+  let includeAudioTrack = true;
+
+  let playerFrameEl: HTMLDivElement | null = null;
+  let frameWidth = 0;
+  let frameHeight = 0;
+  const pointerBufferMs = 250;
+  let pointerState = { x: 0.5, y: 0.5, visible: false };
+  let pointerStyle = "opacity: 0;";
+  let videoSource = "";
+  let activeAssetPath: string | null = null;
+  let loadToken = 0;
+  
+  let currentSnapshot = timelineStore.snapshot();
+  // Reactive snapshot so zoom/trim changes reflect in composited preview
+  $: ($timelineStore, currentSnapshot = timelineStore.snapshot());
+
+  const updateFrameSize = () => {
+    if (!playerFrameEl) return;
+    frameWidth = playerFrameEl.clientWidth;
+    frameHeight = playerFrameEl.clientHeight;
+  };
+
+  onMount(() => {
+    updateFrameSize();
+    window.addEventListener("resize", updateFrameSize);
+    return () => window.removeEventListener("resize", updateFrameSize);
+  });
+
+  $: if (playerFrameEl) {
+    updateFrameSize();
+  }
 
   onDestroy(() => {
     timelineStore.reset();
+    if (activeAssetPath) {
+      disposeAssetUrl(activeAssetPath);
+    }
   });
+
+  $: pointerRecords = $lastRecording
+    ? ($lastRecording.events.filter(
+        (event): event is PointerEventRecord =>
+          event.kind === "pointermove" ||
+          event.kind === "click" ||
+          event.kind === "pointerdown" ||
+          event.kind === "pointerup"
+      ) as PointerEventRecord[]).sort((a, b) => a.t - b.t)
+    : [];
+
+  const computePointerState = (time: number, events: PointerEventRecord[]) => {
+    if (!events.length) {
+      return { x: 0.5, y: 0.5, visible: false };
+    }
+
+    const targetTime = Math.max(0, time) * 1000;
+    let best: PointerEventRecord | null = null;
+    let bestDelta = Number.POSITIVE_INFINITY;
+
+    events.forEach((event) => {
+      if (typeof event.x !== "number" || typeof event.y !== "number") return;
+      const delta = Math.abs(event.t - targetTime);
+      if (delta < bestDelta) {
+        best = event;
+        bestDelta = delta;
+      }
+    });
+
+    if (!best || bestDelta > pointerBufferMs) {
+      return { x: 0.5, y: 0.5, visible: false };
+    }
+
+    return {
+      x: Math.min(Math.max(best.x ?? 0.5, 0), 1),
+      y: Math.min(Math.max(best.y ?? 0.5, 0), 1),
+      visible: true,
+    };
+  };
+
+  $: pointerState = computePointerState(videoCurrentTime, pointerRecords);
+
+  $: pointerStyle = includePointerTrack && pointerState.visible && frameWidth && frameHeight
+    ? `left: ${pointerState.x * frameWidth}px; top: ${pointerState.y * frameHeight}px; opacity: 1;`
+    : "opacity: 0;";
+
+  const loadVideoAsset = async (asset: RecordingAsset | null) => {
+    const filePath = asset?.filePath ?? null;
+    if (activeAssetPath === filePath) return;
+    if (activeAssetPath) {
+      disposeAssetUrl(activeAssetPath);
+    }
+    activeAssetPath = filePath;
+    videoSource = "";
+    if (!filePath) {
+      return;
+    }
+    const token = ++loadToken;
+    const url = await getAssetUrlFromFile(filePath, asset?.mimeType);
+    if (token !== loadToken || activeAssetPath !== filePath) {
+      disposeAssetUrl(filePath);
+      return;
+    }
+    videoSource = url;
+  };
+
+  const findAssetByPath = (path: string | undefined | null): RecordingAsset | null => {
+    if (!$lastRecording || !path) return null;
+    return (
+      Object.values($lastRecording.assets).find(
+        (asset) => asset?.filePath === path
+      ) ?? null
+    );
+  };
+
+  $: if ($lastRecording) {
+    const previewAsset =
+      findAssetByPath($lastRecording.previewPath) ??
+      $lastRecording.assets.screen ??
+      $lastRecording.assets.webcam ??
+      null;
+    void loadVideoAsset(previewAsset);
+  } else {
+    void loadVideoAsset(null);
+  }
 
   const formatTimestamp = (ms: number) => `${(ms / 1000).toFixed(2)}s`;
 
   const isKeyEvent = (event: InputEventRecord): event is KeyEventRecord =>
     event.kind === "keydown" || event.kind === "keyup";
-
-  const isPointerEvent = (
-    event: InputEventRecord
-  ): event is PointerEventRecord =>
-    event.kind === "click" ||
-    event.kind === "pointerdown" ||
-    event.kind === "pointerup" ||
-    event.kind === "pointermove";
 
   const describeEvent = (event: InputEventRecord): string => {
     if (isKeyEvent(event)) {
@@ -73,32 +207,11 @@
     return "";
   };
 
-  const downloadEvents = () => {
-    if (!$lastRecording) return;
-    const blob = new Blob(
-      [JSON.stringify($lastRecording.events, null, 2)],
-      { type: "application/json" }
-    );
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "events.json";
-    document.body.appendChild(anchor);
-    anchor.click();
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-      anchor.remove();
-    }, 500);
-  };
+  $: clickEvents = $lastRecording
+    ? ($lastRecording.events.filter((event) => event.kind === "click" || event.kind === "pointerdown") as PointerEventRecord[])
+    : [];
+  $: sortedClickEvents = [...clickEvents].sort((a, b) => a.t - b.t);
 
-  const downloadVideo = () => {
-    if (!$lastRecording || isRenderingVideo) return;
-    void downloadEditedVideo();
-  };
-
-  const resetToRecorder = () => {
-    $appView = "recorder";
-  };
   const addZoomForClick = (clickEvent: PointerEventRecord) => {
     const focusX = typeof clickEvent.x === "number" ? clickEvent.x : 0.5;
     const focusY = typeof clickEvent.y === "number" ? clickEvent.y : 0.5;
@@ -115,47 +228,77 @@
     });
   };
 
-  const formatClickPosition = (event: PointerEventRecord) => {
-    if (typeof event.x !== "number" || typeof event.y !== "number") return "";
-    return `${(event.x * 100).toFixed(1)}% × ${(event.y * 100).toFixed(1)}%`;
+  const downloadEvents = () => {
+    if (!$lastRecording) return;
+    const blob = new Blob([JSON.stringify($lastRecording.events, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "events.json";
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      anchor.remove();
+    }, 500);
   };
 
-  const ensureEditedFileName = (fileName: string) => {
-    if (!fileName) return "edited-video.webm";
-    const dot = fileName.lastIndexOf(".");
-    if (dot > 0 && dot < fileName.length - 1) {
-      return `${fileName.slice(0, dot)}-edited${fileName.slice(dot)}`;
-    }
-    return `${fileName}-edited.webm`;
+  const resetToRecorder = () => {
+    $appView = "recorder";
   };
+
+  const buildRenderOptions = (onProgress?: (current: number, end: number) => void): RenderCompositeOptions => ({
+    canvasSize: $canvasDimensions,
+    generalLayoutState: $generalLayoutState,
+    screenLayoutState: $screenLayoutState,
+    webcamLayoutState: $webcamLayoutState,
+    theme: $activeTheme,
+    background: $activeBackground,
+    frameRate: $recordingFPS,
+    toggles: {
+      showScreen: true,
+      showWebcam: includeWebcamTrack,
+      showMouse: includePointerTrack,
+      includeAudio: includeAudioTrack,
+    },
+    onProgress,
+  });
 
   const downloadEditedVideo = async () => {
-    if (!$lastRecording || isRenderingVideo) return;
+    if (!$lastRecording) return;
     isRenderingVideo = true;
     renderProgress = 0;
 
-    const snapshot = timelineStore.snapshot();
-    const trimStart = Math.max(0, snapshot.trimStart);
-    const trimEnd = Math.min(snapshot.trimEnd ?? videoDuration, videoDuration);
-    const effectiveDuration = Math.max(0.1, trimEnd - trimStart || videoDuration || 0.1);
-
+    let cleanupPath: string | null = null;
     try {
-      const editedBlob = await renderEditedRecording($lastRecording.videoUrl, videoDuration, snapshot, {
-        onProgress: (current, end) => {
-          if (!end) {
-            renderProgress = 0;
-            return;
-          }
-          const percent = Math.min(100, Math.max(0, Math.round((current / end) * 100)));
-          renderProgress = percent;
-        },
-      });
-      const patchedBlob = await patchBlob(editedBlob, effectiveDuration * 1000);
+      const result: RenderResult = await renderCompositeRecording(
+        $lastRecording.assets,
+        $lastRecording.duration,
+        timelineStore.snapshot(),
+        buildRenderOptions((current, end) => {
+          renderProgress = end ? Math.min(100, Math.round((current / end) * 100)) : 0;
+        })
+      );
 
-      const url = URL.createObjectURL(patchedBlob);
+      if (result.type === "file") {
+        cleanupPath = result.filePath;
+        const savedPath = await window.electronAPI?.saveRenderedFile?.({
+          filePath: result.filePath,
+          fileName: `edited-${$lastRecording.fileName}`,
+        });
+        if (!savedPath) {
+          console.warn("Rendered file save cancelled");
+          return;
+        }
+        return;
+      }
+
+      const url = URL.createObjectURL(result.blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = ensureEditedFileName($lastRecording.fileName);
+      anchor.download = `edited-${$lastRecording.fileName}`;
       document.body.appendChild(anchor);
       anchor.click();
       setTimeout(() => {
@@ -167,146 +310,101 @@
     } finally {
       isRenderingVideo = false;
       renderProgress = 0;
+      if (cleanupPath) {
+        window.electronAPI?.cleanupRecordingAssets?.([cleanupPath]);
+      }
     }
   };
+
 </script>
 
 {#if $lastRecording}
   <div class="review-root">
-    <main class="review-main">
-      <section class="playback-panel">
+    <section class="review-main">
+      <article class="playback-card plain">
         <header class="panel-header">
           <div>
             <h2>Playback</h2>
-            <p>Use the timeline to scrub. Click the video to play or pause.</p>
+            <p>Use the timeline to scrub. The screen asset plays back directly with a live pointer overlay.</p>
           </div>
-          <button class="ghost" on:click={downloadVideo} disabled={isRenderingVideo}>
-            {#if isRenderingVideo}
-              Rendering…
-            {:else}
-              Download edited video
-            {/if}
-          </button>
         </header>
-        <VideoPlayer 
-          src={$lastRecording.videoUrl} 
-          events={$lastRecording.events}
-          bind:duration={videoDuration}
-          bind:currentTime={videoCurrentTime}
-        />
-        
-        <Timeline 
-          duration={videoDuration}
-          currentTime={videoCurrentTime}
-          clickEvents={clickEvents}
-        />
+
+        <div class="player-frame narrow" bind:this={playerFrameEl}>
+          <CompositePlayer
+            assets={$lastRecording.assets}
+            canvasSize={$canvasDimensions}
+            generalLayoutState={$generalLayoutState}
+            screenLayoutState={$screenLayoutState}
+            webcamLayoutState={$webcamLayoutState}
+            theme={$activeTheme}
+            background={$activeBackground}
+            snapshot={currentSnapshot}
+            showScreen={true}
+            showWebcam={includeWebcamTrack}
+            showMouse={includePointerTrack}
+            includeAudio={includeAudioTrack}
+            frameRate={$recordingFPS}
+            bind:duration={videoDuration}
+            bind:currentTime={videoCurrentTime}
+          />
+          <div class="pointer-indicator" style={pointerStyle} />
+        </div>
+
+
+        <Timeline duration={videoDuration} currentTime={videoCurrentTime} clickEvents={clickEvents} />
 
         {#if sortedClickEvents.length}
           <div class="click-actions">
             <div class="click-actions-header">
-              <h3>Click actions</h3>
+              <h3>Clicks</h3>
               <span class="click-count">{sortedClickEvents.length}</span>
             </div>
-            <p class="click-actions-help">Add zoom transitions aligned to recorded clicks.</p>
             <ul>
-              {#each sortedClickEvents as clickEvent, index}
+              {#each sortedClickEvents as clickEvent}
                 <li>
-                  <div class="click-meta">
+                  <div>
                     <span class="click-time">{formatTimestamp(clickEvent.t)}</span>
-                    {#if formatClickPosition(clickEvent)}
-                      <span class="click-pos">{formatClickPosition(clickEvent)}</span>
+                    {#if clickEvent.x !== undefined && clickEvent.y !== undefined}
+                      <span class="click-pos">{(clickEvent.x * 100).toFixed(1)}% × {(clickEvent.y * 100).toFixed(1)}%</span>
                     {/if}
                   </div>
-                  <div class="click-row-actions">
-                    <button
-                      type="button"
-                      class="link-button"
-                      on:click={() => addZoomForClick(clickEvent)}
-                    >
-                      Add zoom
-                    </button>
-                  </div>
+                  <button class="link-button" on:click={() => addZoomForClick(clickEvent)}>
+                    Add zoom
+                  </button>
                 </li>
               {/each}
             </ul>
           </div>
         {/if}
-      </section>
+      </article>
 
-      <section class="log-panel">
-        <header class="panel-header">
-          <div>
-            <h2>Event log</h2>
-            <p>Keyboard shortcuts and clicks captured during the session.</p>
-          </div>
-          <span class="badge">{$lastRecording.events.length} events</span>
-        </header>
-
-        {#if $lastRecording.events.length}
-          <div class="events-table">
-            <table>
-              <thead>
-                <tr>
-                  <th>Timestamp</th>
-                  <th>Event</th>
-                  <th>Details</th>
-                </tr>
-              </thead>
-              <tbody>
-                {#each $lastRecording.events as event, index}
-                  <tr class:index={index % 2 === 1}>
-                    <td>{formatTimestamp(event.t)}</td>
-                    <td>{describeEvent(event)}</td>
-                    <td>
-                      {#if describeDetails(event)}
-                        {describeDetails(event)}
-                      {:else}
-                        <span class="muted">—</span>
-                      {/if}
-                    </td>
-                  </tr>
-                {/each}
-              </tbody>
-            </table>
-          </div>
-        {:else}
-          <div class="empty-state">
-            <p>No input events captured. Interact with the recorded app to see events here.</p>
-          </div>
-        {/if}
-      </section>
-    </main>
+    </section>
 
     <aside class="review-aside">
-      <h1>Recording summary</h1>
-      <p class="aside-text">
-        Export artifacts or head back to the recorder to run another take.
-      </p>
+      <h1>Export options</h1>
+      <p class="aside-text">Control the preview and export, then download the edited video.</p>
+
+      <div class="toggle-group">
+        <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includePointerTrack} /> <span>Include pointer</span></label>
+        <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includeWebcamTrack} /> <span>Include webcam</span></label>
+        <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includeAudioTrack} /> <span>Include audio</span></label>
+      </div>
 
       <div class="button-stack">
-        <button class="primary" on:click={downloadVideo} disabled={isRenderingVideo}>
+        <button class="primary" on:click={downloadEditedVideo} disabled={isRenderingVideo}>
           {#if isRenderingVideo}
-            Rendering video…
+            Rendering… {renderProgress}%
           {:else}
             Download edited video
           {/if}
         </button>
-        <button class="secondary" on:click={downloadEvents}>Export events JSON</button>
-        <button class="ghost" on:click={resetToRecorder}>Back to recorder</button>
+        <button class="danger" on:click={resetToRecorder}>Back to recorder</button>
       </div>
-
-      {#if isRenderingVideo}
-        <div class="render-progress">Preparing download… {renderProgress}%</div>
-      {/if}
 
       <dl class="stats">
         <div>
-          <dt>Last event time</dt>
-          <dd>{formatTimestamp($lastRecording.events.at(-1)?.t ?? 0)}</dd>
-        </div>
-        <div>
-          <dt>Events captured</dt>
-          <dd>{$lastRecording.events.length}</dd>
+          <dt>Duration</dt>
+          <dd>{humanDuration(Math.round($lastRecording.duration / 1000))}</dd>
         </div>
       </dl>
     </aside>
@@ -320,241 +418,150 @@
 
 <style>
   .review-root {
-    height: 100%;
     display: flex;
     gap: 2rem;
-    padding: 0 32px 32px;
-    background: #ffffff;
+    padding: 1rem 2rem 2rem;
+    background: #f6f7fb;
+    min-height: 100vh;
     box-sizing: border-box;
-    overflow-y: auto;
   }
 
   .review-main {
-    flex: 1 1 0;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    gap: 1.75rem;
+    gap: 1.5rem;
   }
 
-  .playback-panel,
-  .log-panel {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 12px;
-    padding: 1.5rem;
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
+  .playback-card {
+    background: transparent;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+    border: none;
   }
+  .playback-card.plain header { padding: 0 0 0.5rem 0; }
 
   .panel-header {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
-    gap: 1.25rem;
+    gap: 1rem;
   }
 
   .panel-header h2 {
-    font-size: 1.1rem;
+    margin: 0;
+    font-size: 1.2rem;
     font-weight: 600;
-    color: #0f172a;
-    margin-bottom: 0.25rem;
   }
 
   .panel-header p {
-    font-size: 0.9rem;
-    color: #475569;
     margin: 0;
-  }
-
-  .badge {
-    align-self: center;
-    padding: 0.2rem 0.65rem;
-    border-radius: 9999px;
-    background: #eef2ff;
-    color: #3730a3;
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
-  .events-table {
-    max-height: 340px;
-    overflow: auto;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-  }
-
-  .events-table table {
-    width: 100%;
-    border-collapse: collapse;
-  }
-
-  .events-table thead {
-    background: #f8fafc;
-    position: sticky;
-    top: 0;
-  }
-
-  .events-table th {
-    text-align: left;
-    padding: 0.65rem 1rem;
-    font-size: 0.8rem;
-    font-weight: 600;
-    color: #475569;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .events-table td {
-    padding: 0.75rem 1rem;
     font-size: 0.9rem;
-    color: #334155;
-    vertical-align: top;
+    color: #475569;
   }
 
-  .events-table tr.index {
-    background: #f9fafb;
+  .player-frame {
+    margin-top: 0.5rem;
+    position: relative;
+    border-radius: 12px;
+    border: none;
+    background: transparent;
+    overflow: visible;
+    min-height: 0;
+  }
+  .player-frame.narrow {
+    max-width: 980px;
+    margin-left: auto;
+    margin-right: auto;
   }
 
-  .events-table td:first-child {
-    font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 0.78rem;
-    color: #1f2937;
-    white-space: nowrap;
-  }
-
-  .muted {
-    color: #94a3b8;
-  }
-
-  .empty-state {
-    padding: 3rem 1.5rem;
-    text-align: center;
-    color: #64748b;
-    font-size: 0.95rem;
+  .pointer-indicator {
+    position: absolute;
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    background: #f97316;
+    box-shadow: 0 0 0 4px rgba(249, 115, 22, 0.4);
+    pointer-events: none;
+    transition: opacity 0.2s ease;
+    transform: translate(-50%, -50%);
   }
 
   .click-actions {
-    padding: 1.25rem;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    background: #f8fafc;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
+    margin-top: 1rem;
   }
 
   .click-actions-header {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
-  }
-
-  .click-actions-header h3 {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-    color: #0f172a;
-  }
-
-  .click-count {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0.15rem 0.5rem;
-    border-radius: 9999px;
-    background: #e0e7ff;
-    color: #3730a3;
-    font-size: 0.75rem;
-    font-weight: 600;
-  }
-
-  .click-actions-help {
-    margin: 0;
-    font-size: 0.85rem;
-    color: #475569;
+    justify-content: space-between;
   }
 
   .click-actions ul {
     list-style: none;
     padding: 0;
-    margin: 0;
+    margin: 0.75rem 0 0;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.65rem;
   }
 
   .click-actions li {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 1rem;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 8px;
-    padding: 0.6rem 0.9rem;
-  }
-
-  .click-meta {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
+    padding: 0.65rem;
+    border-radius: 10px;
+    border: 1px solid #e5e7eb;
   }
 
   .click-time {
-    font-family: "Roboto Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-    font-size: 0.8rem;
-    color: #0f172a;
+    font-weight: 600;
   }
 
   .click-pos {
     font-size: 0.8rem;
-    color: #475569;
-  }
-
-  .click-row-actions {
-    display: flex;
-    align-items: center;
+    color: #64748b;
   }
 
   .link-button {
+    background: none;
     border: none;
-    background: transparent;
-    color: #2563eb;
+    color: #6366f1;
     font-weight: 600;
     cursor: pointer;
-    padding: 0;
-  }
-
-  .link-button:hover {
-    text-decoration: underline;
-  }
-
-  .render-progress {
-    font-size: 0.85rem;
-    color: #2563eb;
   }
 
   .review-aside {
-    width: min(320px, 32%);
+    width: 22rem;
+    border-radius: 18px;
+    border: 1px solid #e5e7eb;
+    padding: 1.5rem;
+    background: #fff;
+    box-shadow: 0 18px 35px rgba(15, 23, 42, 0.08);
     display: flex;
     flex-direction: column;
     gap: 1.25rem;
     position: sticky;
-    top: 32px;
+    top: 1.5rem;
     align-self: flex-start;
   }
+  .toggle-group { display: grid; gap: 0.5rem; }
+  .toggle-group .cb { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; color: #334155; }
+  .cb-input { appearance: none; width: 18px; height: 18px; border: 2px solid #94a3b8; border-radius: 6px; display: inline-block; position: relative; background: #fff; }
+  .cb-input:checked { background: #111827; border-color: #111827; }
+  .cb-input:checked::after { content: ""; position: absolute; left: 4px; top: 0px; width: 6px; height: 12px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
 
   .review-aside h1 {
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: #0f172a;
+    margin: 0;
+    font-size: 1.35rem;
   }
 
   .aside-text {
-    font-size: 0.9rem;
+    margin: 0;
     color: #475569;
-    line-height: 1.5;
+    line-height: 1.4;
   }
 
   .button-stack {
@@ -564,68 +571,38 @@
   }
 
   .primary,
-  .secondary,
-  .ghost {
-    display: inline-flex;
-    justify-content: center;
-    align-items: center;
-    padding: 0.6rem 0.9rem;
-    font-size: 0.9rem;
-    font-weight: 500;
-    border-radius: 8px;
+  .danger {
+    border-radius: 10px;
+    font-weight: 600;
+    padding: 0.7rem 1rem;
     border: 1px solid transparent;
     cursor: pointer;
-    transition: background 0.15s ease, color 0.15s ease;
+    transition: background 0.15s ease;
   }
 
-  .primary {
-    background: #111827;
-    color: #ffffff;
-  }
+  .primary { background: #111827; color: #fff; }
+  .primary:disabled { opacity: 0.6; cursor: not-allowed; }
 
-  .primary:hover {
-    background: #1f2937;
-  }
 
-  .secondary {
-    background: #f8fafc;
-    border-color: #d0d7e6;
-    color: #1e293b;
-  }
-
-  .secondary:hover {
-    background: #e2e8f0;
-  }
-
-  .ghost {
-    background: transparent;
-    color: #1e293b;
-    justify-content: flex-start;
-    padding-inline: 0;
-  }
-
-  .ghost:hover {
-    color: #111827;
-  }
+  .danger { background: #ef4444; color: #fff; }
 
   .stats {
     display: grid;
-    gap: 0.9rem;
-    font-size: 0.9rem;
-    color: #1e293b;
+    gap: 0.75rem;
+    margin: 0;
   }
 
   .stats dt {
-    font-size: 0.8rem;
-    color: #6b7280;
+    font-size: 0.7rem;
+    color: #64748b;
     text-transform: uppercase;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.08em;
   }
 
   .stats dd {
+    margin: 0;
     font-size: 1rem;
     font-weight: 600;
-    margin: 0.15rem 0 0;
   }
 
   .fallback {
@@ -638,11 +615,6 @@
     padding: 2rem;
   }
 
-  .fallback p {
-    font-size: 1rem;
-    color: #475569;
-  }
-
   @media (max-width: 1024px) {
     .review-root {
       flex-direction: column;
@@ -651,18 +623,10 @@
     .review-aside {
       position: static;
       width: 100%;
-      align-self: stretch;
     }
   }
 
   @media (max-width: 640px) {
-    .panel-header {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    .panel-header .badge {
-      margin-left: 0;
-    }
+    .playback-card { padding: 1rem; }
   }
 </style>

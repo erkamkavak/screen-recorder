@@ -42,4 +42,13 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on(channel, subscription);
     return () => ipcRenderer.removeListener(channel, subscription);
   },
+  saveRecordingAsset: (payload) => ipcRenderer.invoke("recording:save-asset", payload),
+  cleanupRecordingAssets: (paths) => ipcRenderer.invoke("recording:cleanup-assets", paths),
+  readRecordingAsset: (path) => ipcRenderer.invoke("recording:read-asset", path),
+  getRecordingAssetUrl: (path) => ipcRenderer.invoke("recording:get-asset-url", path),
+  saveRenderedFile: (payload) => ipcRenderer.invoke("rendering:save-file", payload),
+  startRenderStream: (fileName) => ipcRenderer.invoke("rendering:start", fileName),
+  appendRenderChunk: (payload) => ipcRenderer.invoke("rendering:append", payload),
+  patchRenderFile: (payload) => ipcRenderer.invoke("rendering:patch", payload),
+  cancelRenderStream: (filePath) => ipcRenderer.invoke("rendering:cancel", filePath),
 });

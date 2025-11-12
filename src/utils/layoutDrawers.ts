@@ -1,7 +1,74 @@
-import type { DrawFn } from "../stores";
+import type {
+  CanvasSize,
+  DrawFn,
+  GeneralLayoutState,
+  ScreenState,
+  Share,
+} from "../stores";
 import { HorizAlign, VertAlign, WebcamShape } from "../stores";
 import { circleClip, roundedRectClip } from "./drawUtils";
 import { calculateWebcamMetrics } from "./webcamMetrics";
+
+export type ScreenPlacement = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  cornerRadius: number;
+};
+
+export const calculateScreenPlacement = (
+  canvasSize: CanvasSize,
+  activeShare: Share | null | undefined,
+  screenLayoutState: ScreenState,
+  generalLayoutState: GeneralLayoutState
+): ScreenPlacement | null => {
+  if (!activeShare || !activeShare.preview) return null;
+
+  const { width, height } = canvasSize;
+  if (!width || !height) return null;
+
+  const { horizAlign, vertAlign } = screenLayoutState;
+  const { padding } = generalLayoutState;
+  const m = Math.max(width, height);
+  const pad = (padding * Math.min(width, height)) / 4;
+  const r = m / 100;
+  const displayAspectRatio =
+    activeShare.width && activeShare.height
+      ? activeShare.height / activeShare.width
+      : 1;
+
+  let x0 = 0,
+    y0 = 0,
+    w = 0,
+    h = 0;
+
+  if (displayAspectRatio * (width - 2 * pad) <= height - 2 * pad) {
+    x0 = pad;
+    w = width - 2 * pad;
+    h = w * displayAspectRatio;
+    if (vertAlign === VertAlign.top) {
+      y0 = pad;
+    } else if (vertAlign === VertAlign.center) {
+      y0 = (height - h) / 2;
+    } else if (vertAlign === VertAlign.bottom) {
+      y0 = height - pad - h;
+    }
+  } else {
+    y0 = pad;
+    h = height - 2 * pad;
+    w = h / displayAspectRatio;
+    if (horizAlign === HorizAlign.left) {
+      x0 = pad;
+    } else if (horizAlign === HorizAlign.center) {
+      x0 = (width - w) / 2;
+    } else if (horizAlign === HorizAlign.right) {
+      x0 = width - pad - w;
+    }
+  }
+
+  return { x: x0, y: y0, width: w, height: h, cornerRadius: r };
+};
 
 export const drawWebcam: DrawFn = (args) => {
   if (!args.webcamState.stream || !args.webcamState.preview) return;
@@ -114,59 +181,34 @@ export const drawWebcam: DrawFn = (args) => {
  * Drawing screen share
  */
 export const drawScreenShare: DrawFn = (args) => {
-  // Screen
-  if (args.activeShare && args.activeShare.stream && args.activeShare.preview) {
-    const {
-      ctx,
-      activeShare,
-      screenLayoutState,
-      canvasSize,
-      generalLayoutState,
-    } = args;
-    const { width, height } = canvasSize;
-    const { horizAlign, vertAlign } = screenLayoutState;
-    const { padding } = generalLayoutState;
-    const m = Math.max(width, height);
-    const pad = (padding * Math.min(width, height)) / 4;
-    const r = m / 100;
-
-    const displayAspectRatio = activeShare.height / activeShare.width;
-
-    let x0 = 0,
-      y0 = 0,
-      w = 0,
-      h = 0;
-
-    // Landscape mode. Always fills width, so no adjustment on x0. Need to adjust y0.
-    if (displayAspectRatio * (width - 2 * pad) <= height - 2 * pad) {
-      x0 = pad;
-      w = width - 2 * pad;
-      h = w * displayAspectRatio;
-      if (vertAlign === VertAlign.top) {
-        y0 = pad;
-      } else if (vertAlign === VertAlign.center) {
-        y0 = (height - h) / 2;
-      } else if (vertAlign === VertAlign.bottom) {
-        y0 = height - pad - h;
+  if (
+    args.activeShare?.preview &&
+    args.activeShare.preview instanceof HTMLVideoElement
+  ) {
+    const placement = calculateScreenPlacement(
+      args.canvasSize,
+      args.activeShare,
+      args.screenLayoutState,
+      args.generalLayoutState
+    );
+    if (!placement) return;
+    roundedRectClip(
+      args.ctx,
+      placement.x,
+      placement.y,
+      placement.width,
+      placement.height,
+      placement.cornerRadius,
+      () => {
+        args.ctx.drawImage(
+          args.activeShare.preview,
+          placement.x,
+          placement.y,
+          placement.width,
+          placement.height
+        );
       }
-    }
-    // Portrait mode. Fill height, need to adjust x0.
-    else {
-      y0 = pad;
-      h = height - 2 * pad;
-      w = h / displayAspectRatio;
-      if (horizAlign === HorizAlign.left) {
-        x0 = pad;
-      } else if (horizAlign === HorizAlign.center) {
-        x0 = (width - w) / 2;
-      } else if (horizAlign === HorizAlign.right) {
-        x0 = width - pad - w;
-      }
-    }
-
-    roundedRectClip(ctx, x0, y0, w, h, r, () => {
-      ctx.drawImage(activeShare.preview, x0, y0, w, h);
-    });
+    );
   }
 };
 

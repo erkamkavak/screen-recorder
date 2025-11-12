@@ -7,6 +7,7 @@
   import {
     activeBackground,
     backgrounds,
+    customBackgroundImage,
     generalLayoutState,
   } from "../../stores.js";
   import RangeInput from "../ui/RangeInput.svelte";
@@ -42,7 +43,53 @@
     $activeBackground = event.detail.value;
   };
 
-  const backgroundOptions = ["Audio", "Gradient", "Solid"];
+  const backgroundOptions = ["Audio", "Gradient", "Solid", "Image"];
+  const imageBackground = backgrounds.find((bg) => bg.category === "Image");
+  const fallbackBackground =
+    backgrounds.find((bg) => bg.category !== "Image") ?? backgrounds[0];
+
+  let imageInput: HTMLInputElement | null = null;
+
+  const handleBackgroundImageUpload = (event: Event) => {
+    const target = event.currentTarget as HTMLInputElement;
+    const file = target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        customBackgroundImage.set({
+          src: reader.result,
+          name: file.name,
+        });
+      }
+    };
+    reader.readAsDataURL(file);
+    target.value = "";
+  };
+
+  const clearCustomBackgroundImage = () => {
+    customBackgroundImage.set(null);
+    if (imageInput) {
+      imageInput.value = "";
+    }
+  };
+
+  $: if (
+    $customBackgroundImage &&
+    imageBackground &&
+    $activeBackground !== imageBackground
+  ) {
+    $activeBackground = imageBackground;
+  }
+
+  $: if (
+    !$customBackgroundImage &&
+    imageBackground &&
+    $activeBackground === imageBackground &&
+    fallbackBackground
+  ) {
+    $activeBackground = fallbackBackground;
+  }
 </script>
 
 <SidebarSection title="Appearance">
@@ -135,5 +182,38 @@
         on:select={handleBackgroundChange}
       />
     {/each}
+  </div>
+</SidebarSection>
+
+<SidebarSection title="Background image">
+  <div class="grid gap-3">
+    <label class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+      Upload image
+    </label>
+    <input
+      type="file"
+      accept="image/*"
+      bind:this={imageInput}
+      class="text-sm text-slate-600 dark:text-slate-300"
+      on:change={handleBackgroundImageUpload}
+    />
+    {#if $customBackgroundImage}
+      <div class="rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
+        <img
+          src={$customBackgroundImage.src}
+          alt={$customBackgroundImage.name ?? "Custom background preview"}
+          class="h-28 w-full rounded-lg object-cover"
+          loading="lazy"
+        />
+        <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          {$customBackgroundImage.name || "Custom background"}
+        </p>
+        <button class="link-button mt-2" type="button" on:click={clearCustomBackgroundImage}>
+          Remove image
+        </button>
+      </div>
+    {:else}
+      <p class="text-xs text-slate-500 dark:text-slate-400">No custom image selected.</p>
+    {/if}
   </div>
 </SidebarSection>

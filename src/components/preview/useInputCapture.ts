@@ -42,6 +42,8 @@ export function createInputCapture({
 }: CreateInputCaptureArgs) {
   const screenFocused = writable(false);
 
+  const pointerListeners = new Set<(record: PointerEventRecord) => void>();
+
   let screenOverlayEl: ScreenOverlayRef = null;
   let browserListenersAttached = false;
   let unsubscribeElectronEvents: (() => void) | null = null;
@@ -92,6 +94,7 @@ export function createInputCapture({
     };
 
     appendEvent(record);
+    pointerListeners.forEach((listener) => listener(record));
   };
 
   const appendKeyRecord = (kind: KeyEventRecord["kind"], event: KeyboardEvent) => {
@@ -289,6 +292,11 @@ export function createInputCapture({
     screenOverlayEl = null;
   };
 
+  const registerPointerListener = (listener: (record: PointerEventRecord) => void) => {
+    pointerListeners.add(listener);
+    return () => pointerListeners.delete(listener);
+  };
+
   return {
     screenFocused,
     attachScreenOverlay,
@@ -297,5 +305,6 @@ export function createInputCapture({
     handleScreenMouseLeave,
     handleLocalPointerEvent,
     destroy,
+    registerPointerListener,
   };
 }

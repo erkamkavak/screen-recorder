@@ -4,10 +4,13 @@
     activeShare,
     activeTheme,
     canvasDimensions,
+    displayDimensions,
     generalLayoutState,
     inputEvents,
     isRecording,
     micAnalyzer,
+    mouseCursorStream,
+    previewScreenshotCapture,
     recordingFPS,
     recordingStartTime,
     screenLayoutState,
@@ -20,10 +23,15 @@
   import ScreenAlignmentOverlay from "./preview/ScreenAlignmentOverlay.svelte";
   import WebcamOverlay from "./preview/WebcamOverlay.svelte";
   import { createInputCapture } from "./preview/useInputCapture";
+  import { MouseOverlayRecorder } from "../utils/mouseOverlayRecorder";
 
   let stageWidth = 0;
   let stageHeight = 0;
   let stageScale = 1;
+  type PreviewCanvasHandle = {
+    captureScreenshot: (type?: "png" | "jpeg") => Promise<Blob | null>;
+  };
+  let previewCanvasRef: PreviewCanvasHandle | null = null;
 
   const inputCapture = createInputCapture({
     isRecording,
@@ -32,9 +40,41 @@
   });
 
   const screenFocusedStore = inputCapture.screenFocused;
+  let pointerUnsubscribe: (() => void) | null = null;
+  let mouseRecorder: MouseOverlayRecorder | null = null;
+
+  const initMouseRecorder = () => {
+    if (mouseRecorder) return;
+    const displayDims = $displayDimensions;
+    if (!displayDims?.width || !displayDims?.height) return;
+
+    mouseRecorder = new MouseOverlayRecorder({
+      width: displayDims.width,
+      height: displayDims.height,
+      fps: $recordingFPS,
+      onStream: (stream) => mouseCursorStream.set(stream),
+    });
+    mouseRecorder.start();
+    pointerUnsubscribe = inputCapture.registerPointerListener((record) => {
+      mouseRecorder?.updatePointer(record);
+    });
+  };
+
+  $: if ($displayDimensions?.width && $displayDimensions?.height) {
+    initMouseRecorder();
+  }
+
+  $: if (mouseRecorder && $displayDimensions) {
+    mouseRecorder.updateSize($displayDimensions.width, $displayDimensions.height);
+    mouseRecorder.updateFps($recordingFPS);
+  }
 
   onDestroy(() => {
     inputCapture.destroy();
+    pointerUnsubscribe?.();
+    mouseRecorder?.destroy();
+    mouseCursorStream.set(null);
+    previewScreenshotCapture.set(null);
   });
 
   $: drawState = {
@@ -47,6 +87,16 @@
     screenLayoutState: $screenLayoutState,
     generalLayoutState: $generalLayoutState,
   } satisfies Omit<DrawArgs, "ctx">;
+
+  $: {
+    if (!previewCanvasRef) {
+      previewScreenshotCapture.set(null);
+    } else {
+      previewScreenshotCapture.set((type?: "png" | "jpeg") =>
+        previewCanvasRef.captureScreenshot(type ?? "png")
+      );
+    }
+  }
 </script>
 
 <PreviewStage
@@ -64,6 +114,7 @@
     recordingFPS={$recordingFPS}
     {drawState}
     scale={stageScale}
+    bind:this={previewCanvasRef}
   />
 
   <ScreenAlignmentOverlay

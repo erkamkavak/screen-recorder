@@ -66,10 +66,23 @@ export type InputEventRecord = PointerEventRecord | KeyEventRecord;
 
 export const inputEvents = writable<InputEventRecord[]>([]);
 
+export type RecordingAssetType = "screen" | "webcam" | "mouse" | "audio";
+
+export type RecordingAsset = {
+  type: RecordingAssetType;
+  fileName: string;
+  filePath: string;
+  mimeType?: string;
+};
+
+export type RecordingAssets = Partial<Record<RecordingAssetType, RecordingAsset>>;
+
 export type LastRecording = {
-  videoUrl: string;
+  assets: RecordingAssets;
   events: InputEventRecord[];
   fileName: string;
+  duration: number;
+  previewPath?: string;
 } | null;
 export const lastRecording = writable<LastRecording>(null);
 
@@ -178,6 +191,13 @@ export const micAnalyzer = derived(micState, ($micState) => {
  * Canvas stream
  */
 export const canvasStream = writable<MediaStream>(null);
+
+export const previewScreenshotCapture = writable<(() => Promise<Blob | null>) | null>(null);
+
+/**
+ * Mouse overlay stream
+ */
+export const mouseCursorStream = writable<MediaStream>(null);
 
 /**
  * Canvas sizes
@@ -326,17 +346,73 @@ export type DrawFn = (
   webcamY?: number
 ) => void;
 
-export type BackgroundCategories = "Audio" | "Gradient" | "Solid";
+export type BackgroundCategories = "Audio" | "Gradient" | "Solid" | "Image";
 
 /**
  * Background
  */
-type Background = {
+export type Background = {
   title: string;
   category: BackgroundCategories;
   ariaLabel: string;
   draw: DrawFn;
 };
+
+export type CustomBackgroundImage = {
+  src: string;
+  name?: string;
+} | null;
+
+let customBackgroundImageElement: HTMLImageElement | null = null;
+
+const ensureCustomBackgroundImageElement = (src: string | null) => {
+  if (!src) {
+    customBackgroundImageElement = null;
+    return;
+  }
+
+  if (!customBackgroundImageElement) {
+    customBackgroundImageElement = new Image();
+  }
+
+  if (customBackgroundImageElement.src !== src) {
+    customBackgroundImageElement.src = src;
+  }
+};
+
+const fallbackImageBackground = createLinearGradientBackground("bottom_right");
+
+const drawCustomImageBackground: DrawFn = (args) => {
+  if (
+    customBackgroundImageElement &&
+    customBackgroundImageElement.complete &&
+    customBackgroundImageElement.naturalWidth &&
+    customBackgroundImageElement.naturalHeight
+  ) {
+    args.ctx.save();
+    args.ctx.drawImage(
+      customBackgroundImageElement,
+      0,
+      0,
+      args.canvasSize.width,
+      args.canvasSize.height
+    );
+    args.ctx.restore();
+  } else {
+    fallbackImageBackground(args);
+  }
+};
+
+const initCustomBackgroundImage: CustomBackgroundImage = (() => {
+  try {
+    const stored = localStorage.getItem("customBackgroundImage");
+    return stored ? (JSON.parse(stored) as CustomBackgroundImage) : null;
+  } catch {
+    return null;
+  }
+})();
+
+ensureCustomBackgroundImageElement(initCustomBackgroundImage?.src ?? null);
 
 export const backgrounds: Background[] = [
   {
@@ -415,6 +491,12 @@ export const backgrounds: Background[] = [
     category: "Solid",
     draw: createSolidBackground("secondary"),
   },
+  {
+    title: "Custom image",
+    ariaLabel: "Uploaded image background",
+    category: "Image",
+    draw: drawCustomImageBackground,
+  },
 ];
 
 export const activeBackground = (() => {
@@ -431,6 +513,24 @@ export const activeBackground = (() => {
     _set(background);
   };
 
+  return store;
+})();
+
+export const customBackgroundImage = (() => {
+  const store = writable<CustomBackgroundImage>(initCustomBackgroundImage);
+  store.subscribe((value) => {
+    if (value) {
+      try {
+        localStorage.setItem("customBackgroundImage", JSON.stringify(value));
+      } catch {}
+      ensureCustomBackgroundImageElement(value.src);
+    } else {
+      try {
+        localStorage.removeItem("customBackgroundImage");
+      } catch {}
+      ensureCustomBackgroundImageElement(null);
+    }
+  });
   return store;
 })();
 

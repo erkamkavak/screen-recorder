@@ -3,12 +3,14 @@
   import { fade } from "svelte/transition";
   import type { Share } from "../stores";
   import DesktopIcon from "./icons/desktop.icon.svelte";
+  import ScreenshotIcon from "./icons/screenshot.icon.svelte";
   import ShareButton from "./ShareButton.svelte";
   import WebcamButton from "./WebcamButton.svelte";
   import MicButton from "./ui/MicButton.svelte";
   import newUniqueId from "locally-unique-id-generator";
   import {
     isRecording,
+    previewScreenshotCapture,
     recordingDuration,
     screenShareState,
   } from "../stores.js";
@@ -24,6 +26,23 @@
   $:{
     shares = [...$screenShareState.shares];
   }
+
+  const exportPreviewScreenshot = async () => {
+    const capture = $previewScreenshotCapture;
+    if (!capture) return;
+    const blob = await capture();
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "preview-screenshot.png";
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      anchor.remove();
+    }, 500);
+  };
 </script>
 
 <div class="flex flex-col gap-5 px-5 py-5 lg:px-6">
@@ -78,9 +97,9 @@
 
     <div class="flex min-w-[160px] flex-col gap-2">
       <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-        Recording
+        Capture
       </p>
-      <div class="flex items-center gap-3">
+      <div class="flex w-full items-center justify-around">
         {#if $recordingDuration !== null}
           <div
             class="min-w-[4.5rem] rounded-full border border-red-200/70 bg-white/90 px-3 py-1 text-center text-sm font-medium text-red-600 shadow-sm transition dark:border-red-500/40 dark:bg-red-500/20 dark:text-red-200"
@@ -89,6 +108,18 @@
             {$recordingDuration}
           </div>
         {/if}
+
+        <button
+          class="group relative flex h-12 w-12 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-200"
+          type="button"
+          on:click={exportPreviewScreenshot}
+          aria-label="Export screenshot"
+        >
+          <ScreenshotIcon />
+          <span class="absolute -bottom-6 text-xs font-medium uppercase tracking-wide text-slate-400 group-hover:text-slate-500 dark:text-slate-500 dark:group-hover:text-slate-300">
+            Screenshot
+          </span>          
+        </button>
 
         <button
           class="group relative flex h-12 w-12 items-center justify-center rounded-full border-2 border-red-200 bg-red-500/90 text-white shadow-lg transition hover:bg-red-500 focus:outline-none focus-visible:ring-4 focus-visible:ring-red-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-red-500/60 dark:bg-red-500/80 dark:hover:bg-red-500 dark:focus-visible:ring-red-500/70 dark:focus-visible:ring-offset-slate-900"

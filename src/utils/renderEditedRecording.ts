@@ -1,19 +1,59 @@
-import type { TimelineEvent, TimelineSnapshot, TimelineZoomEvent } from "../stores/timeline";
+import type { TimelineSnapshot, TimelineZoomEvent } from "../stores/timeline";
 import { computeZoomState } from "./timelinePlayback";
+import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "./layoutDrawers";
+import { patchBlob } from "./blobHelpers";
+import { getPreferredMimeType } from "./getPreferredMimeType";
+import type {
+  CanvasSize,
+  DrawArgs,
+  GeneralLayoutState,
+  RecordingAssets,
+  RecordingAsset,
+  ScreenState,
+  WebcamLayoutState,
+  Theme,
+  Background,
+  Share,
+} from "../stores";
+import { getAssetUrlFromFile } from "./assetStorage";
 
-interface RenderOptions {
-  mimeType?: string;
-  frameRate?: number;
-  onProgress?: (current: number, end: number) => void;
-  includeAudio?: boolean;
+interface RenderToggleConfig {
+  showScreen: boolean;
+  showWebcam: boolean;
+  showMouse: boolean;
+  includeAudio: boolean;
 }
 
-const ensureZoomEvents = (events: TimelineEvent[]): TimelineZoomEvent[] =>
+export interface RenderCompositeOptions {
+  frameRate?: number;
+  onProgress?: (current: number, end: number) => void;
+  canvasSize: CanvasSize;
+  generalLayoutState: GeneralLayoutState;
+  screenLayoutState: ScreenState;
+  webcamLayoutState: WebcamLayoutState;
+  theme: Theme;
+  background: Background;
+  toggles: RenderToggleConfig;
+}
+
+export type RenderResult =
+  | {
+      type: "blob";
+      blob: Blob;
+      mimeType: string;
+    }
+  | {
+      type: "file";
+      filePath: string;
+      mimeType: string;
+    };
+
+const ensureZoomEvents = (events: TimelineSnapshot["events"]): TimelineZoomEvent[] =>
   events.filter((event): event is TimelineZoomEvent => event.type === "zoom");
 
-const waitForMetadata = (video: HTMLVideoElement) =>
+const waitForMetadata = (media: HTMLMediaElement) =>
   new Promise<void>((resolve, reject) => {
-    if (video.readyState >= 1) {
+    if (media.readyState >= 1) {
       resolve();
       return;
     }
@@ -25,16 +65,16 @@ const waitForMetadata = (video: HTMLVideoElement) =>
 
     const onError = () => {
       cleanup();
-      reject(new Error("Failed to load video metadata"));
+      reject(new Error("Failed to load media metadata"));
     };
 
     const cleanup = () => {
-      video.removeEventListener("loadedmetadata", onLoaded);
-      video.removeEventListener("error", onError);
+      media.removeEventListener("loadedmetadata", onLoaded);
+      media.removeEventListener("error", onError);
     };
 
-    video.addEventListener("loadedmetadata", onLoaded);
-    video.addEventListener("error", onError);
+    media.addEventListener("loadedmetadata", onLoaded);
+    media.addEventListener("error", onError);
   });
 
 const seekVideo = (video: HTMLVideoElement, time: number) =>
@@ -61,164 +101,575 @@ const seekVideo = (video: HTMLVideoElement, time: number) =>
     video.currentTime = clamped;
   });
 
-export const renderEditedRecording = async (
-  sourceUrl: string,
-  duration: number,
-  snapshot: TimelineSnapshot,
-  options: RenderOptions = {}
-): Promise<Blob> => {
+const metaEnv =
+  typeof import.meta !== "undefined"
+    ? (import.meta as { env?: { MODE?: string } })
+    : undefined;
+const isDevMode = (metaEnv?.env?.MODE ?? "development") !== "production";
+
+const debugLog = (...args: unknown[]) => {
+  if (!isDevMode) return;
+  console.log("[RenderComposite]", ...args);
+};
+
+const createVideoElement = (assetUrl: string) => {
   const video = document.createElement("video");
-  video.src = sourceUrl;
-  video.crossOrigin = "anonymous";
+  video.src = assetUrl;
+  if (assetUrl.startsWith("blob:")) {
+    video.crossOrigin = "anonymous";
+  }
   video.playsInline = true;
   video.muted = true;
+  // Reduce memory usage by limiting buffering
+  video.preload = "metadata";
+  // Disable aggressive buffering
+  video.setAttribute("disableRemotePlayback", "true");
+  return video;
+};
 
-  await waitForMetadata(video);
-
-  const videoWidth = video.videoWidth || 1280;
-  const videoHeight = video.videoHeight || 720;
-  const frameRate = options.frameRate ?? 30;
-  const mimeType = options.mimeType ?? "video/webm;codecs=vp9";
-  const includeAudio = options.includeAudio !== false;
-
-  const canvas = document.createElement("canvas");
-  canvas.width = videoWidth;
-  canvas.height = videoHeight;
-
-  const context = canvas.getContext("2d");
-  if (!context) {
-    throw new Error("Unable to render edited video: canvas 2D context unavailable");
+const createAudioElement = (assetUrl: string) => {
+  const audio = document.createElement("audio");
+  audio.src = assetUrl;
+  if (assetUrl.startsWith("blob:")) {
+    audio.crossOrigin = "anonymous";
   }
+  audio.muted = true;
+  // Reduce memory usage by limiting buffering
+  audio.preload = "metadata";
+  return audio;
+};
 
-  const renderStream = canvas.captureStream(frameRate);
-  let audioSource: MediaStream | null = null;
+type CapturableMediaElement = HTMLMediaElement & {
+  captureStream?: () => MediaStream;
+  mozCaptureStream?: () => MediaStream;
+  webkitCaptureStream?: () => MediaStream;
+};
 
-  if (includeAudio) {
-    const capturable = video as HTMLVideoElement & {
-      captureStream?: () => MediaStream;
-      mozCaptureStream?: () => MediaStream;
-      webkitCaptureStream?: () => MediaStream;
-    };
-    const captureFn =
-      capturable.captureStream ?? capturable.mozCaptureStream ?? capturable.webkitCaptureStream;
-    if (typeof captureFn === "function") {
-      try {
-        audioSource = captureFn.call(capturable);
-        audioSource
-          .getAudioTracks()
-          .forEach((track) => renderStream.addTrack(track));
-      } catch (error) {
-        console.warn("Failed to capture source audio during render", error);
-      }
+const captureMediaStream = (element: HTMLMediaElement): MediaStream | null => {
+  const capturable = element as CapturableMediaElement;
+  const captureFn =
+    capturable.captureStream ??
+    capturable.mozCaptureStream ??
+    capturable.webkitCaptureStream;
+  if (typeof captureFn === "function") {
+    try {
+      return captureFn.call(capturable);
+    } catch {
+      return null;
     }
   }
+  return null;
+};
 
-  const chunks: Blob[] = [];
-  let recorder: MediaRecorder;
-
-  try {
-    recorder = new MediaRecorder(renderStream, { mimeType });
-  } catch (error) {
-    renderStream.getTracks().forEach((track) => track.stop());
-    audioSource?.getTracks().forEach((track) => track.stop());
-    throw error instanceof Error ? error : new Error("Unable to initialise media recorder");
+export const renderCompositeRecording = async (
+  assets: RecordingAssets,
+  durationMs: number,
+  snapshot: TimelineSnapshot,
+  options: RenderCompositeOptions
+): Promise<RenderResult> => {
+  const screenAsset = assets.screen;
+  if (!screenAsset) {
+    throw new Error("Screen asset missing for rendering");
   }
 
-  recorder.ondataavailable = (event) => {
-    if (event.data && event.data.size > 0) {
-      chunks.push(event.data);
+  const loadAssetUrl = async (asset?: RecordingAsset | null) => {
+    if (!asset) return null;
+    try {
+      return await getAssetUrlFromFile(asset.filePath);
+    } catch (error) {
+      console.warn("Unable to load asset for rendering", error);
+      return null;
     }
   };
 
-  const resultPromise = new Promise<Blob>((resolve, reject) => {
-    recorder.onstop = () => {
-      try {
-        const type = recorder.mimeType || mimeType;
-        resolve(new Blob(chunks, { type }));
-      } catch (error) {
-        reject(error instanceof Error ? error : new Error("Failed to assemble rendered video"));
+  const screenUrl = await loadAssetUrl(screenAsset);
+  if (!screenUrl) {
+    throw new Error("Unable to load screen asset for rendering");
+  }
+  const screenVideo = createVideoElement(screenUrl);
+  await waitForMetadata(screenVideo);
+
+  const shouldLoadWebcam = options.toggles.showWebcam;
+  const shouldLoadMouse = options.toggles.showMouse;
+
+  const webcamUrl = shouldLoadWebcam ? await loadAssetUrl(assets.webcam) : null;
+  const webcamVideo = webcamUrl ? createVideoElement(webcamUrl) : null;
+  if (webcamVideo) {
+    await waitForMetadata(webcamVideo);
+  }
+
+  const mouseUrl = shouldLoadMouse ? await loadAssetUrl(assets.mouse) : null;
+  const mouseVideo = mouseUrl ? createVideoElement(mouseUrl) : null;
+  if (mouseVideo) {
+    await waitForMetadata(mouseVideo);
+  }
+
+  // Use conservative frame rate to reduce memory usage
+  // 30fps is fine for most content, but lower FPS uses significantly less memory
+  const frameRate = Math.min(Math.max(options.frameRate ?? 30, 12), 30);
+  const canvas = document.createElement("canvas");
+  
+  // Automatically reduce resolution for very large canvases to save memory
+  const targetPixels = options.canvasSize.width * options.canvasSize.height;
+  const MAX_PIXELS = 1920 * 1080 * 1.5; // ~3MP max to keep memory reasonable
+  let scaleFactor = 1.0;
+  
+  if (targetPixels > MAX_PIXELS) {
+    scaleFactor = Math.sqrt(MAX_PIXELS / targetPixels);
+    console.warn(`[Render] Canvas too large (${(targetPixels / 1000000).toFixed(1)}MP), scaling to ${(scaleFactor * 100).toFixed(0)}% to reduce memory`);
+  }
+  
+  canvas.width = Math.round(options.canvasSize.width * scaleFactor);
+  canvas.height = Math.round(options.canvasSize.height * scaleFactor);
+
+  const ctx = canvas.getContext("2d", {
+    // Hint that we'll read pixels frequently (for MediaRecorder)
+    willReadFrequently: false,
+    // Don't need alpha for video rendering
+    alpha: false,
+  });
+  if (!ctx) {
+    throw new Error("Unable to render: canvas context unavailable");
+  }
+  
+  // Log memory usage if available (Chrome/Edge)
+  const logMemory = () => {
+    if (typeof performance !== 'undefined' && (performance as any).memory) {
+      const mem = (performance as any).memory;
+      const usedMB = (mem.usedJSHeapSize / 1024 / 1024).toFixed(0);
+      const limitMB = (mem.jsHeapSizeLimit / 1024 / 1024).toFixed(0);
+      console.log(`[Render] Memory: ${usedMB}MB / ${limitMB}MB`);
+    }
+  };
+  logMemory();
+  debugLog("Render start", {
+    durationMs,
+    frameRate,
+    canvas: { width: canvas.width, height: canvas.height },
+  });
+
+  // Track all captured streams for proper cleanup
+  const capturedStreams: MediaStream[] = [];
+  
+  const screenCaptureStream = captureMediaStream(screenVideo);
+  if (screenCaptureStream) capturedStreams.push(screenCaptureStream);
+  
+  const screenShare: Share = {
+    id: "composite-screen",
+    preview: screenVideo,
+    stream: screenCaptureStream,
+    width: screenVideo.videoWidth,
+    height: screenVideo.videoHeight,
+  };
+
+  const webcamCaptureStream = webcamVideo ? captureMediaStream(webcamVideo) : null;
+  if (webcamCaptureStream) capturedStreams.push(webcamCaptureStream);
+  
+  const webcamStateForRender = {
+    stream: webcamCaptureStream,
+    preview: webcamVideo,
+    width: webcamVideo?.videoWidth ?? 0,
+    height: webcamVideo?.videoHeight ?? 0,
+  };
+
+  const drawArgs: DrawArgs = {
+    ctx,
+    theme: options.theme,
+    // Use scaled canvas size
+    canvasSize: { 
+      title: options.canvasSize.title,
+      width: canvas.width, 
+      height: canvas.height 
+    },
+    activeShare: screenShare,
+    webcamState: webcamStateForRender,
+    micAnalyzer: null,
+    generalLayoutState: options.generalLayoutState,
+    webcamLayoutState: options.webcamLayoutState,
+    screenLayoutState: options.screenLayoutState,
+  };
+
+  const trimStart = Math.max(0, snapshot.trimStart);
+  const trimEnd = Math.min(snapshot.trimEnd ?? durationMs / 1000, durationMs / 1000);
+  const effectiveDurationSec = Math.max(0.1, trimEnd - trimStart || durationMs / 1000 || 0.1);
+  const effectiveDurationMs = Math.round(effectiveDurationSec * 1000);
+  const zoomEvents = ensureZoomEvents(snapshot.events);
+
+  await Promise.all([
+    seekVideo(screenVideo, trimStart),
+    webcamVideo ? seekVideo(webcamVideo, trimStart) : Promise.resolve(),
+    mouseVideo ? seekVideo(mouseVideo, trimStart) : Promise.resolve(),
+  ]);
+
+  const renderStream = canvas.captureStream(frameRate);
+  const audioUrl = options.toggles.includeAudio
+    ? await loadAssetUrl(assets.audio)
+    : null;
+  const audioElement = audioUrl ? createAudioElement(audioUrl) : null;
+  let audioTracks: MediaStreamTrack[] = [];
+
+  if (audioElement) {
+    await waitForMetadata(audioElement);
+    const captureStream = captureMediaStream(audioElement);
+    if (captureStream) {
+      capturedStreams.push(captureStream);
+      captureStream.getAudioTracks().forEach((track) => {
+        renderStream.addTrack(track);
+        audioTracks.push(track);
+      });
+      audioElement.play().catch(() => undefined);
+    }
+  }
+
+  const mime = getPreferredMimeType();
+  // Lower bitrate to reduce memory usage (4 Mbps is still high quality)
+  const recorder = new MediaRecorder(renderStream, {
+    mimeType: mime.mimeType,
+    videoBitsPerSecond: 4_000_000,
+    audioBitsPerSecond: 128_000,
+  });
+  const chunks: Blob[] = [];
+  const electronAPI =
+    typeof window !== "undefined" ? window.electronAPI ?? null : null;
+  const supportsStreaming =
+    Boolean(electronAPI?.startRenderStream && electronAPI?.appendRenderChunk);
+  let renderFilePath: string | null = null;
+  if (supportsStreaming && electronAPI?.startRenderStream) {
+    try {
+      renderFilePath = await electronAPI.startRenderStream("rendered.webm");
+    } catch (error) {
+      console.warn("Failed to initialize streaming render", error);
+      renderFilePath = null;
+    }
+  }
+  const chunkWriteQueue: Blob[] = [];
+  // Reduce buffer size to minimize memory usage
+  const MAX_PENDING_CHUNKS = 1;
+  let pendingChunkWrites = 0;
+  let queueProcessingPromise: Promise<void> | null = null;
+
+  // Track memory pressure
+  let skipFrames = 0;
+
+  recorder.ondataavailable = (event) => {
+    if (!event.data || event.data.size === 0) return;
+
+    if (renderFilePath && electronAPI?.appendRenderChunk) {
+      chunkWriteQueue.push(event.data);
+      pendingChunkWrites += 1;
+      debugLog("Chunk queued", {
+        queueLength: chunkWriteQueue.length,
+        pendingChunkWrites,
+      });
+      processChunkQueue();
+      return;
+    }
+
+    chunks.push(event.data);
+  };
+
+  const processChunkQueue = () => {
+    if (!renderFilePath || !electronAPI?.appendRenderChunk) {
+      return Promise.resolve();
+    }
+
+    if (!chunkWriteQueue.length) {
+      queueProcessingPromise = null;
+      return Promise.resolve();
+    }
+
+    if (!queueProcessingPromise) {
+      queueProcessingPromise = (async () => {
+        try {
+          debugLog("Processing chunk queue", { initialLength: chunkWriteQueue.length });
+          while (chunkWriteQueue.length) {
+            const blob = chunkWriteQueue.shift()!;
+            const buffer = await blob.arrayBuffer();
+            await electronAPI?.appendRenderChunk?.({
+              filePath: renderFilePath!,
+              buffer,
+            });
+            pendingChunkWrites = Math.max(0, pendingChunkWrites - 1);
+          }
+        } finally {
+          debugLog("Chunk queue drained");
+          queueProcessingPromise = null;
+        }
+      })();
+    }
+
+    return queueProcessingPromise;
+  };
+
+  const finalizeRender = async (): Promise<RenderResult> => {
+    await processChunkQueue();
+    debugLog("Finalizing render", {
+      pending: pendingChunkWrites,
+      queueLength: chunkWriteQueue.length,
+      renderFile: Boolean(renderFilePath),
+    });
+
+    let rawBlob: Blob;
+    if (renderFilePath) {
+      if (electronAPI?.patchRenderFile) {
+        await electronAPI.patchRenderFile({
+          filePath: renderFilePath,
+          durationMs: effectiveDurationMs,
+        });
       }
+      debugLog("Finalize returning file", { filePath: renderFilePath });
+      return {
+        type: "file",
+        filePath: renderFilePath,
+        mimeType: mime.mimeType,
+      };
+    } else {
+      const blobType = chunks[0]?.type || mime.mimeType;
+      rawBlob = new Blob(chunks, { type: blobType });
+      (chunks as any).length = 0;
+    }
+
+    const patched = await patchBlob(rawBlob, effectiveDurationMs);
+    debugLog("Finalize returning blob", { durationMs: effectiveDurationMs, byteLength: patched.size });
+    return {
+      type: "blob",
+      blob: patched,
+      mimeType: mime.mimeType,
     };
-    recorder.onerror = (event: Event) => {
-      const error = (event as any).error || new Error("MediaRecorder failed");
-      reject(error);
+  };
+
+  const resultPromise = new Promise<RenderResult>((resolve, reject) => {
+    recorder.onstop = () => {
+      finalizeRender().then(resolve).catch((error) => {
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("Failed to patch rendered video")
+        );
+      });
+      debugLog("MediaRecorder onstop fired");
+    };
+    recorder.onerror = (event) => {
+      reject((event as any).error ?? new Error("MediaRecorder error"));
+      debugLog("MediaRecorder onerror", (event as any).error);
     };
   });
 
-  const trimStart = Math.max(0, snapshot.trimStart);
-  const trimEnd = Math.min(snapshot.trimEnd ?? duration, duration);
-  const zoomEvents = ensureZoomEvents(snapshot.events);
-
-  await seekVideo(video, trimStart);
-
-  recorder.start();
-
-  let stopped = false;
-
-  const stopRecording = () => {
-    if (stopped) return;
-    stopped = true;
-    try {
-      video.pause();
-    } catch (error) {
-      console.warn("Failed to pause source video", error);
+  const maybeRevokeUrl = (url: string | null) => {
+    if (url && url.startsWith("blob:")) {
+      try { URL.revokeObjectURL(url); } catch {}
     }
-    if (recorder.state !== "inactive") {
-      recorder.stop();
-    }
-    renderStream.getTracks().forEach((track) => track.stop());
-    audioSource?.getTracks().forEach((track) => track.stop());
   };
+
+  const stopCapture = () => {
+    // Stop and clear all video elements
+    try { screenVideo.pause(); } catch {}
+    try { screenVideo.src = ""; screenVideo.load(); } catch {}
+    try { screenVideo.remove(); } catch {}
+    
+    if (webcamVideo) { 
+      try { webcamVideo.pause(); webcamVideo.src = ""; webcamVideo.load(); } catch {}
+      try { webcamVideo.remove(); } catch {}
+    }
+    
+    if (mouseVideo) { 
+      try { mouseVideo.pause(); mouseVideo.src = ""; mouseVideo.load(); } catch {}
+      try { mouseVideo.remove(); } catch {}
+    }
+    
+    if (audioElement) {
+      try { audioElement.pause(); audioElement.src = ""; audioElement.load(); } catch {}
+      try { audioElement.remove(); } catch {}
+    }
+    
+    // Stop all captured streams from video/audio elements
+    try {
+      capturedStreams.forEach((stream) => {
+        stream.getTracks().forEach((track) => {
+          track.stop();
+        });
+      });
+      capturedStreams.length = 0;
+    } catch {}
+    
+    // Stop render stream tracks
+    try { renderStream.getTracks().forEach((track) => track.stop()); } catch {}
+    try { audioTracks.forEach((track) => track.stop()); } catch {}
+    audioTracks.length = 0;
+    
+    // Clear canvas to release resources
+    try {
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      canvas.width = 0;
+      canvas.height = 0;
+    } catch {}
+
+    // Revoke blob URLs
+    maybeRevokeUrl(screenUrl);
+    maybeRevokeUrl(webcamUrl);
+    maybeRevokeUrl(mouseUrl);
+    maybeRevokeUrl(audioUrl);
+    
+    // Clear MediaRecorder event handlers to prevent memory leaks
+    recorder.ondataavailable = null;
+    recorder.onstop = null;
+    recorder.onerror = null;
+  };
+
+  // Flush chunks more frequently to reduce memory buffering (100ms vs 250ms)
+  const RECORDER_TIMESLICE_MS = 100;
+  recorder.start(RECORDER_TIMESLICE_MS);
+
+  const { onProgress, background, toggles } = options;
+  let stopped = false;
+  let animationId: number;
 
   const drawFrame = () => {
     if (stopped) return;
 
-    const current = video.currentTime;
-    if (current >= trimEnd || video.ended) {
-      options.onProgress?.(trimEnd, trimEnd);
-      stopRecording();
+    // Implement backpressure when too many chunks are pending
+    if (pendingChunkWrites >= MAX_PENDING_CHUNKS) {
+      skipFrames++;
+      // Skip rendering this frame but still schedule next frame
+      animationId = requestAnimationFrame(drawFrame);
+      return;
+    }
+    
+    // Reset skip counter when we're caught up
+    if (skipFrames > 0 && pendingChunkWrites === 0) {
+      skipFrames = 0;
+    }
+
+    const current = screenVideo.currentTime;
+    if (current >= trimEnd || screenVideo.ended) {
+      debugLog("DrawFrame stopping", { current, trimEnd, ended: screenVideo.ended });
+      onProgress?.(trimEnd, trimEnd);
+      stopLoop();
       return;
     }
 
     const { scale, focusX, focusY } = computeZoomState(zoomEvents, current);
 
-    context.save();
-    context.clearRect(0, 0, videoWidth, videoHeight);
-    const pivotX = focusX * videoWidth;
-    const pivotY = focusY * videoHeight;
-    context.translate(pivotX, pivotY);
-    context.scale(scale, scale);
-    context.translate(-pivotX, -pivotY);
-    context.drawImage(video, 0, 0, videoWidth, videoHeight);
-    context.restore();
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    // Use lower quality when skipping frames to save memory
+    ctx.imageSmoothingQuality = skipFrames > 10 ? "medium" : "high";
+    ctx.globalCompositeOperation = "source-over";
 
-    options.onProgress?.(current, trimEnd);
-    requestAnimationFrame(drawFrame);
+    // Zoom and draw screen only
+    ctx.save();
+    const pivotX = focusX * canvas.width;
+    const pivotY = focusY * canvas.height;
+    ctx.translate(pivotX, pivotY);
+    ctx.scale(scale, scale);
+    ctx.translate(-pivotX, -pivotY);
+    if (toggles.showScreen) {
+      drawScreenShare(drawArgs);
+    }
+    ctx.restore();
+
+    // Draw mouse without zoom
+    if (toggles.showMouse && mouseVideo) {
+      const placement = calculateScreenPlacement(
+        options.canvasSize,
+        drawArgs.activeShare,
+        options.screenLayoutState,
+        options.generalLayoutState
+      );
+      if (placement) {
+        ctx.drawImage(
+          mouseVideo,
+          placement.x,
+          placement.y,
+          placement.width,
+          placement.height
+        );
+      }
+    }
+
+    // Draw webcam without zoom
+    if (toggles.showWebcam && webcamVideo) {
+      drawWebcam(drawArgs);
+    }
+
+    // Background behind everything
+    ctx.globalCompositeOperation = "destination-over";
+    background.draw(drawArgs);
+    ctx.globalCompositeOperation = "source-over";
+
+    onProgress?.(current, trimEnd);
+    
+    // Log memory every 100 frames to track usage
+    if (Math.random() < 0.01) { // ~1% of frames
+      logMemory();
+    }
+    
+    animationId = requestAnimationFrame(drawFrame);
   };
 
-  const onTimeUpdate = () => {
-    if (video.currentTime >= trimEnd) {
-      stopRecording();
+  const stopLoop = () => {
+    if (stopped) return;
+    stopped = true;
+    debugLog("stopLoop invoked", { recorderState: recorder.state });
+    cancelAnimationFrame(animationId);
+    if (recorder.state !== "inactive") {
+      try {
+        recorder.stop();
+        debugLog("recorder.stop() called");
+      } catch (error) {
+        debugLog("recorder.stop() threw", error);
+      }
     }
   };
 
-  video.addEventListener("timeupdate", onTimeUpdate);
+  let captureCleanupDone = false;
+  const ensureCaptureStopped = () => {
+    if (captureCleanupDone) return;
+    captureCleanupDone = true;
+    stopCapture();
+  };
+
+  const handleTimeUpdate = () => {
+    if (screenVideo.currentTime >= trimEnd) {
+      debugLog("handleTimeUpdate triggered", { current: screenVideo.currentTime, trimEnd });
+      stopLoop();
+    }
+  };
+
+  screenVideo.addEventListener("timeupdate", handleTimeUpdate);
 
   try {
-    await video.play();
+    await Promise.all([screenVideo.play(), webcamVideo?.play(), mouseVideo?.play()].map((promise) => promise ?? Promise.resolve()));
   } catch (error) {
-    video.removeEventListener("timeupdate", onTimeUpdate);
-    stopRecording();
-    throw error instanceof Error ? error : new Error("Unable to play source video for rendering");
+    stopLoop();
+    // Cancel Electron-side streaming if active
+    if (renderFilePath && electronAPI?.cancelRenderStream) {
+      electronAPI.cancelRenderStream(renderFilePath).catch(() => {});
+    }
+    throw error instanceof Error ? error : new Error("Unable to play media for rendering");
   }
 
-  drawFrame();
+  animationId = requestAnimationFrame(drawFrame);
 
-  const blob = await resultPromise.finally(() => {
-    video.removeEventListener("timeupdate", onTimeUpdate);
-    renderStream.getTracks().forEach((track) => track.stop());
-    audioSource?.getTracks().forEach((track) => track.stop());
-  });
+  const result = await resultPromise
+    .catch(async (error) => {
+      // Cancel Electron-side streaming on error
+      if (renderFilePath && electronAPI?.cancelRenderStream) {
+        await electronAPI.cancelRenderStream(renderFilePath).catch(() => {});
+      }
+      throw error;
+    })
+    .finally(() => {
+      screenVideo.removeEventListener("timeupdate", handleTimeUpdate);
+      stopLoop();
+      ensureCaptureStopped();
+      // Help GC drop references
+      chunks.length = 0;
+      chunkWriteQueue.length = 0;
+    });
 
-  return blob;
+  debugLog("Render promise resolved", result.type);
+
+  return result;
 };

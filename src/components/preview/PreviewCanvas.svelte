@@ -118,6 +118,13 @@
     // Keep capture stream aligned with scale and fps changes
     setupStream();
   }
+
+  export const captureScreenshot = async (type: "png" | "jpeg" = "png") => {
+    if (!canvas) return null;
+    return new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), `image/${type}`);
+    });
+  };
 </script>
 
 <canvas
