@@ -3,6 +3,7 @@ import { computeZoomState } from "./timelinePlayback";
 import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "./layoutDrawers";
 import { patchBlob } from "./blobHelpers";
 import { getPreferredMimeType } from "./getPreferredMimeType";
+import { createRenderChunkQueue, type RenderChunkQueue } from "./renderChunkQueue";
 import type {
   CanvasSize,
   DrawArgs,
@@ -342,70 +343,39 @@ export const renderCompositeRecording = async (
       renderFilePath = null;
     }
   }
-  const chunkWriteQueue: Blob[] = [];
-  // Reduce buffer size to minimize memory usage
   const MAX_PENDING_CHUNKS = 1;
-  let pendingChunkWrites = 0;
-  let queueProcessingPromise: Promise<void> | null = null;
-
-  // Track memory pressure
   let skipFrames = 0;
+  let chunkQueue: RenderChunkQueue | null = null;
 
   recorder.ondataavailable = (event) => {
     if (!event.data || event.data.size === 0) return;
 
     if (renderFilePath && electronAPI?.appendRenderChunk) {
-      chunkWriteQueue.push(event.data);
-      pendingChunkWrites += 1;
+      if (!chunkQueue) {
+        chunkQueue = createRenderChunkQueue(async (blob) => {
+          const buffer = await blob.arrayBuffer();
+          await electronAPI.appendRenderChunk({
+            filePath: renderFilePath!,
+            buffer,
+          });
+        });
+      }
+      chunkQueue.enqueue(event.data);
       debugLog("Chunk queued", {
-        queueLength: chunkWriteQueue.length,
-        pendingChunkWrites,
+        queueLength: chunkQueue.queueLength(),
+        pending: chunkQueue.pendingCount(),
       });
-      processChunkQueue();
       return;
     }
 
     chunks.push(event.data);
   };
 
-  const processChunkQueue = () => {
-    if (!renderFilePath || !electronAPI?.appendRenderChunk) {
-      return Promise.resolve();
-    }
-
-    if (!chunkWriteQueue.length) {
-      queueProcessingPromise = null;
-      return Promise.resolve();
-    }
-
-    if (!queueProcessingPromise) {
-      queueProcessingPromise = (async () => {
-        try {
-          debugLog("Processing chunk queue", { initialLength: chunkWriteQueue.length });
-          while (chunkWriteQueue.length) {
-            const blob = chunkWriteQueue.shift()!;
-            const buffer = await blob.arrayBuffer();
-            await electronAPI?.appendRenderChunk?.({
-              filePath: renderFilePath!,
-              buffer,
-            });
-            pendingChunkWrites = Math.max(0, pendingChunkWrites - 1);
-          }
-        } finally {
-          debugLog("Chunk queue drained");
-          queueProcessingPromise = null;
-        }
-      })();
-    }
-
-    return queueProcessingPromise;
-  };
-
   const finalizeRender = async (): Promise<RenderResult> => {
-    await processChunkQueue();
+    await chunkQueue?.flush();
     debugLog("Finalizing render", {
-      pending: pendingChunkWrites,
-      queueLength: chunkWriteQueue.length,
+      pending: chunkQueue?.pendingCount() ?? 0,
+      queueLength: chunkQueue?.queueLength() ?? 0,
       renderFile: Boolean(renderFilePath),
     });
 
@@ -530,15 +500,16 @@ export const renderCompositeRecording = async (
     if (stopped) return;
 
     // Implement backpressure when too many chunks are pending
-    if (pendingChunkWrites >= MAX_PENDING_CHUNKS) {
+    const pendingChunks = chunkQueue?.pendingCount() ?? 0;
+    if (pendingChunks >= MAX_PENDING_CHUNKS) {
       skipFrames++;
       // Skip rendering this frame but still schedule next frame
       animationId = requestAnimationFrame(drawFrame);
       return;
     }
-    
+   
     // Reset skip counter when we're caught up
-    if (skipFrames > 0 && pendingChunkWrites === 0) {
+    if (skipFrames > 0 && pendingChunks === 0) {
       skipFrames = 0;
     }
 
@@ -666,7 +637,7 @@ export const renderCompositeRecording = async (
       ensureCaptureStopped();
       // Help GC drop references
       chunks.length = 0;
-      chunkWriteQueue.length = 0;
+      chunkQueue?.reset();
     });
 
   debugLog("Render promise resolved", result.type);

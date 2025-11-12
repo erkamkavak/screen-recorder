@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
-  import type { TimelineSnapshot } from "../stores/timeline";
-  import { computeZoomState } from "../utils/timelinePlayback";
-  import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "../utils/layoutDrawers";
+  import type { TimelineSnapshot } from "../../stores/timeline";
+  import { computeZoomState } from "../../utils/timelinePlayback";
+  import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "../../utils/layoutDrawers";
   import type {
     Background,
     CanvasSize,
@@ -14,8 +14,8 @@
     Theme,
     WebcamLayoutState,
     Share,
-  } from "../stores";
-  import { getAssetUrlFromFile } from "../utils/assetStorage";
+  } from "../../stores";
+  import { getAssetUrlFromFile } from "../../utils/assetStorage";
 
   export let assets: RecordingAssets;
   export let canvasSize: CanvasSize;
