@@ -62,17 +62,27 @@
         throw new Error("Selected source is no longer available.");
       }
 
-      const videoConstraints = {
+      const videoConstraints: any = {
         mandatory: {
           chromeMediaSource: "desktop",
           chromeMediaSourceId: resolvedSourceId,
+          cursor: "never",
         },
-      } as unknown as MediaTrackConstraints;
+        optional: [{ cursor: "never" }],
+      };
 
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: false,
         video: videoConstraints,
       });
+      const cursorTrack = stream.getVideoTracks()[0];
+      if (cursorTrack?.applyConstraints) {
+        try {
+          await cursorTrack.applyConstraints({ advanced: [{ cursor: "never" }] } as any);
+        } catch {
+          // ignore unsupported constraints
+        }
+      }
 
       share.stream = stream;
       share.preview.srcObject = share.stream;
@@ -90,7 +100,7 @@
   const startBrowserCapture = async () => {
     try {
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: { cursor: "never" } as any,
       });
       share.stream = stream;
       share.preview.srcObject = share.stream;
@@ -209,11 +219,14 @@
         on:outclick={cancelSelection}
       >
         <div
-          class="w-[22rem] max-h-80 flex flex-col gap-3 p-4 bg-white dark:bg-fmd-navy/95 rounded-xl shadow-2xl border border-gray-200/80 dark:border-fmd-blue/60"
+          class="w-[28rem] max-h-96 flex flex-col gap-4 p-5 bg-white dark:bg-fmd-navy/95 rounded-2xl shadow-2xl border border-gray-200/80 dark:border-fmd-blue/60"
         >
           {#if isLoadingSources || isCapturing}
-            <div class="flex flex-1 items-center justify-center py-8">
+            <div class="flex flex-1 flex-col items-center justify-center gap-3 py-6">
               <LoadingDots />
+              <p class="text-xs font-medium text-gray-600 dark:text-fmd-white/80">
+                Loading available screens and windows...
+              </p>
             </div>
           {:else if pickerError}
           <div class="flex flex-1 flex-col items-center justify-center gap-3 text-center px-2 py-4">
@@ -242,16 +255,16 @@
           </div>
         {:else}
           <div class="flex-1 overflow-auto pr-1">
-            <div class="grid gap-3 grid-cols-2">
+            <div class="grid gap-4 grid-cols-2">
               {#each desktopSources as source (source.id)}
                 <button
-                  class="flex flex-col items-center gap-2 p-3 rounded-lg border border-transparent hover:border-fmd-red transition bg-white/90 dark:bg-fmd-navy/70 hover:bg-fmd-red/5 dark:hover:bg-fmd-blue/20"
+                  class="flex flex-col items-center gap-3 p-4 rounded-xl border border-transparent hover:border-fmd-red transition bg-white/90 dark:bg-fmd-navy/70 hover:bg-fmd-red/5 dark:hover:bg-fmd-blue/20"
                   on:click={() => selectSource(source.id)}
                 >
                   {#if source.thumbnail}
-                    <img src={source.thumbnail} alt={source.name} class="w-28 h-16 object-cover rounded-md shadow-sm" />
+                    <img src={source.thumbnail} alt={source.name} class="w-32 h-20 object-cover rounded-lg shadow-md" />
                   {:else}
-                    <div class="w-28 h-16 bg-gray-200 rounded-md" />
+                    <div class="w-32 h-20 bg-gray-200 rounded-lg" />
                   {/if}
                   <span class="text-xs text-gray-700 dark:text-white font-medium text-center leading-tight break-words w-full">
                     {source.name}

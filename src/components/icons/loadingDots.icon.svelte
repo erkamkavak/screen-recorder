@@ -7,8 +7,8 @@
   class="w-3/5 animate-[loading_1s_infinite] dark:animate-[loadingDark_1s_infinite]"
 >
   <g>
-    <circle cx="4.5" cy="12" r="2" />
-    <circle cx="12" cy="12" r="2" />
-    <circle cx="19.5" cy="12" r="2" />
+    <circle cx="8" cy="12" r="0.7" />
+    <circle cx="12" cy="12" r="0.7" />
+    <circle cx="16" cy="12" r="0.7" />
   </g>
 </svg>

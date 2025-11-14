@@ -7,17 +7,40 @@
   import ShareButton from "./ShareButton.svelte";
   import WebcamButton from "./WebcamButton.svelte";
   import MicButton from "./ui/MicButton.svelte";
+  import CheckIcon from "./icons/check.icon.svelte";
+  import CloseIcon from "./icons/close.icon.svelte";
   import newUniqueId from "locally-unique-id-generator";
   import {
     isRecording,
     previewScreenshotCapture,
     recordingDuration,
     screenShareState,
+    micState,
+    webcamState,
   } from "../stores.js";
   import ActionButton from "./ui/ActionButton.svelte";
 
   const dispatch = createEventDispatcher();
   let shares:Share[]=[];
+
+  const disableMic = () => {
+    if ($micState.stream) {
+      $micState.stream.getTracks().forEach((track) => track.stop());
+      $micState.stream = null;
+      $micState.deviceId = null;
+    }
+  };
+
+  const disableWebcam = () => {
+    if ($webcamState.stream) {
+      $webcamState.stream.getTracks().forEach((track) => track.stop());
+      $webcamState.stream = null;
+      $webcamState.deviceId = null;
+      if ($webcamState.preview) {
+        $webcamState.preview.srcObject = null;
+      }
+    }
+  };
 
   const handleAddScreenShare = () => {
     $screenShareState.shares.push({ width: 0, height: 0,id:newUniqueId() });
@@ -53,16 +76,56 @@
       </p>
       <div class="flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur dark:border-slate-800/80 dark:bg-slate-900/60">
         <div class="flex flex-col items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-          <div class="h-12 w-12">
+          <div class="relative h-12 w-12">
             <MicButton />
+            {#if $micState.stream}
+              <button
+                type="button"
+                class="group absolute -top-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 shadow-sm ring-1 ring-emerald-100 transition hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/40 dark:hover:bg-emerald-500/20"
+                on:click={disableMic}
+                aria-label="Turn off mic"
+              >
+                <span class="block h-3.5 w-3.5 group-hover:hidden">
+                  <CheckIcon />
+                </span>
+                <span class="hidden h-2 w-2 group-hover:block text-red-500">
+                  <CloseIcon />
+                </span>
+              </button>
+            {/if}
           </div>
           <span>Mic</span>
+          <span class="text-[10px] font-medium uppercase tracking-wide { $micState.stream
+            ? 'text-emerald-500 dark:text-emerald-400'
+            : 'text-slate-400 dark:text-slate-500'}">
+            { $micState.stream ? 'On' : 'Off' }
+          </span>
         </div>
         <div class="flex flex-col items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-          <div class="h-12 w-12">
+          <div class="relative h-12 w-12">
             <WebcamButton />
+            {#if $webcamState.stream}
+              <button
+                type="button"
+                class="group absolute -top-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 shadow-sm ring-1 ring-emerald-100 transition hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/40 dark:hover:bg-emerald-500/20"
+                on:click={disableWebcam}
+                aria-label="Turn off webcam"
+              >
+                <span class="block h-3.5 w-3.5 group-hover:hidden">
+                  <CheckIcon />
+                </span>
+                <span class="hidden h-2 w-2 group-hover:block text-red-500">
+                  <CloseIcon />
+                </span>
+              </button>
+            {/if}
           </div>
           <span>Webcam</span>
+          <span class="text-[10px] font-medium uppercase tracking-wide { $webcamState.stream
+            ? 'text-emerald-500 dark:text-emerald-400'
+            : 'text-slate-400 dark:text-slate-500'}">
+            { $webcamState.stream ? 'On' : 'Off' }
+          </span>
         </div>
       </div>
     </div>
