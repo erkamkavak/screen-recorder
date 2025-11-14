@@ -2,15 +2,18 @@
   import { timelineStore } from "../stores/timeline";
   import type { PointerEventRecord } from "../stores";
   import { ZOOM_DEFAULT_DURATION, ZOOM_DEFAULT_SCALE } from "../utils/zoomDefaults";
+  import { findZoomEventForTime } from "../utils/zoomEvents";
 
   export let duration = 0;
   export let currentTime = 0;
   export let clickEvents: PointerEventRecord[] = [];
+  export let onAddZoomForClick: ((clickEvent: PointerEventRecord) => void) | null = null;
 
   let zoomDraft = false;
   let trackEl: HTMLDivElement | null = null;
   let draggingTrim: "start" | "end" | null = null;
   let selectedClickIndex: number | null = null;
+  let hoveredClickEvent: PointerEventRecord | null = null;
 
   $: canUndo = $timelineStore.historyIndex > 0;
   $: canRedo = $timelineStore.historyIndex < $timelineStore.history.length - 1;
@@ -108,9 +111,15 @@
     draggingTrim = null;
   };
 
-  const handleClickMarker = (index: number, seconds: number) => {
+  const handleClickMarker = (index: number, clickEvent: PointerEventRecord) => {
+    const seconds = clampTime(clickEvent.t / 1000);
+    const existingZoom = findZoomEventForTime($timelineStore.events, seconds);
+    if (existingZoom) {
+      timelineStore.selectEvent(existingZoom.id);
+      return;
+    }
     selectedClickIndex = index;
-    addZoomAt(seconds);
+    onAddZoomForClick?.(clickEvent);
     selectedClickIndex = null;
   };
 
@@ -261,20 +270,36 @@
       title="Adjust end trim"
     ></button>
 
-    <div class="click-events-layer">
+    <div class="click-lines-layer">
       {#each clickEvents as clickEvent, index}
         {@const seconds = clampTime(clickEvent.t / 1000)}
+        {@const clickZoomEvent = findZoomEventForTime($timelineStore.events, seconds)}
         <button
-          class="click-event-marker"
+          type="button"
+          class="click-line"
+          class:has-zoom={Boolean(clickZoomEvent)}
           class:selected={selectedClickIndex === index}
           style={`left: ${getPositionPercent(seconds)}%`}
+          on:pointerenter={() => {
+            hoveredClickEvent = clickEvent;
+          }}
+          on:pointerleave={() => {
+            hoveredClickEvent = null;
+          }}
           on:click={(event) => {
             event.stopPropagation();
-            handleClickMarker(index, seconds);
+            handleClickMarker(index, clickEvent);
           }}
           title={`Click at ${formatTime(seconds)}`}
         ></button>
       {/each}
+      {#if hoveredClickEvent}
+        {@const bubbleSeconds = clampTime(hoveredClickEvent.t / 1000)}
+        {@const hoveredZoomEvent = findZoomEventForTime($timelineStore.events, bubbleSeconds)}
+        <div class="click-tooltip" style={`left: ${getPositionPercent(bubbleSeconds)}%`}>
+          <span>{hoveredZoomEvent ? "Zoom already added" : "Add zoom"}</span>
+        </div>
+      {/if}
     </div>
 
     <div class="events-layer">
@@ -395,7 +420,7 @@
     border: 1px solid #e5e7eb;
     border-radius: 6px;
     padding: 0 0.5rem;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .time-markers {
@@ -451,34 +476,65 @@
     z-index: 3;
   }
 
-  .click-events-layer {
+  .click-lines-layer {
     position: absolute;
-    top: 20px;
-    left: 0;
-    right: 0;
-    height: 20px;
+    inset: 0;
     pointer-events: none;
-    z-index: 2;
+    z-index: 5;
   }
 
-  .click-event-marker {
+  .click-line {
     position: absolute;
-    transform: translateX(-50%);
+    top: 0;
+    bottom: 0;
     width: 16px;
-    height: 16px;
-    border-radius: 50%;
-    background: #fb923c;
-    border: 2px solid white;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-    pointer-events: all;
+    transform: translateX(-50%);
+    border: none;
     cursor: pointer;
-    transition: transform 0.15s ease, background 0.15s ease;
+    pointer-events: all;
+    background: transparent;
   }
 
-  .click-event-marker:hover,
-  .click-event-marker.selected {
-    background: #f97316;
-    transform: translateX(-50%) scale(1.2);
+  .click-line::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 12px;
+    bottom: 12px;
+    width: 2px;
+    background: #ef4444;
+    transform: translateX(-50%);
+    opacity: 0.35;
+    border-radius: 999px;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.35);
+    transition: opacity 0.2s ease;
+  }
+
+  .click-line.has-zoom::before {
+    background: #f59e0b;
+    box-shadow: 0 0 10px rgba(245, 158, 11, 0.35);
+  }
+
+  .click-line:hover::before,
+  .click-line.selected::before {
+    opacity: 1;
+  }
+
+  .click-tooltip {
+    position: absolute;
+    top: 12px;
+    transform: translate(-50%, -120%);
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: white;
+    background: #111827;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    pointer-events: none;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.2);
+    z-index: 6;
   }
 
   .events-layer {

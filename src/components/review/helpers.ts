@@ -15,8 +15,6 @@ export const humanDuration = (secondsTotal: number) => {
   return parts.join(" ");
 };
 
-export const formatTimestamp = (ms: number) => `${(ms / 1000).toFixed(2)}s`;
-
 export const getPointerRecords = (events: InputEventRecord[] | null | undefined): PointerEventRecord[] =>
   (events ?? [])
     .filter((event): event is PointerEventRecord =>
