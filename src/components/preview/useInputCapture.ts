@@ -146,7 +146,7 @@ export function createInputCapture({
     appendPointerRecord(
       (event as PointerEvent).type as PointerKind,
       event as PointerEvent,
-      normalizeGlobal
+      normalizeWithinOverlay
     );
   };
 
@@ -273,6 +273,11 @@ export function createInputCapture({
   const handleLocalPointerEvent = (event: MouseEvent | PointerEvent) => {
     if (!get(isRecording)) return;
     if (!screenOverlayEl) return;
+
+    // In Electron, when global input capture is active (uIOhook), rely on those
+    // events as the single source of pointer coordinates to avoid mixing
+    // different coordinate systems.
+    if (isElectron && electronCaptureActive) return;
 
     appendPointerRecord(
       (event as PointerEvent).type as PointerKind,

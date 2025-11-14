@@ -1,19 +1,20 @@
 <script lang="ts">
   import {
-  activeBackground,
-  activeShare,
-  activeTheme,
-  appView,
-  canvasDimensions,
-  generalLayoutState,
+    activeBackground,
+    activeShare,
+    activeTheme,
+    appView,
+    canvasDimensions,
+    generalLayoutState,
     lastRecording,
     recordingFPS,
     screenLayoutState,
     webcamLayoutState,
-    type RecordingAsset,
   } from "../stores";
   import type { PointerEventRecord } from "../stores";
   import Review from "./review/Review.svelte";
+  import cursorPackCursor from "../assets/cursors/cutecore-pink-cursor.png?url";
+  import cursorPackPointer from "../assets/cursors/cutecore-pink-pointer.png?url";
   import { timelineStore } from "../stores/timeline";
   import { onDestroy, onMount } from "svelte";
   import {
@@ -21,11 +22,11 @@
     type RenderCompositeOptions,
     type RenderResult,
   } from "../utils/renderEditedRecording";
-  import { getAssetUrlFromFile, disposeAssetUrl } from "../utils/assetStorage";
   import {
     computePointerState,
     getPointerRecords,
-  } from "./review/helpers";
+    type ComputedPointerState,
+  } from "../utils/pointerState";
   import { ZOOM_DEFAULT_DURATION, ZOOM_DEFAULT_SCALE } from "../utils/zoomDefaults";
   import { calculateScreenPlacement } from "../utils/layoutDrawers";
   import type { ScreenPlacement } from "../utils/layoutDrawers";
@@ -41,19 +42,34 @@
   let includeAudioTrack = true;
 
   let playerFrameEl: HTMLDivElement | null = null;
-  let frameWidth = 0;
-  let frameHeight = 0;
-  let pointerState = { x: 0.5, y: 0.5, visible: false };
+  let videoFrameWidth = 0;
+  let videoFrameHeight = 0;
+  let videoFrameOffsetLeft = 0;
+  let videoFrameOffsetTop = 0;
+  let frameObserver: ResizeObserver | null = null;
+  type PointerIconOption = {
+    id: string;
+    label: string;
+    data: string | null;
+    pressedData?: string | null;
+  };
+  let pointerState: ComputedPointerState = {
+    x: 0.5,
+    y: 0.5,
+    visible: false,
+    kind: null,
+    isPressed: false,
+  };
+  const POINTER_COLOR = "#f97316";
   let pointerIndicatorSize = 18;
-  let pointerIndicatorColor = "#f97316";
-  let pointerIconSelection: typeof pointerIconOptions[number]['id'] = "none";
+  let pointerIconSelection = "cutecore-pink";
   let pointerIconUrl: string | null = null;
+  let pointerIconPressedUrl: string | null = null;
+  let pointerIconImageUrl: string | null = null;
+  let pointerIconPressedImageUrl: string | null = null;
   let pointerShadow = "rgba(249, 115, 22, 0.4)";
   let screenPlacement: ScreenPlacement | null = null;
   let pointerStyle = "opacity: 0;";
-  let videoSource = "";
-  let activeAssetPath: string | null = null;
-  let loadToken = 0;
   let recordingDurationSeconds = 0;
   let timelineDuration = 0;
   
@@ -61,27 +77,58 @@
   // Reactive snapshot so zoom/trim changes reflect in composited preview
   $: ($timelineStore, currentSnapshot = timelineStore.snapshot());
 
-  const updateFrameSize = () => {
+  const updateVideoFrameMetrics = () => {
+    if (!playerFrameEl) {
+      videoFrameWidth = 0;
+      videoFrameHeight = 0;
+      videoFrameOffsetLeft = 0;
+      videoFrameOffsetTop = 0;
+      return;
+    }
+    const videoFrameEl = playerFrameEl.querySelector<HTMLElement>(".video-frame");
+    if (!videoFrameEl) {
+      videoFrameWidth = 0;
+      videoFrameHeight = 0;
+      videoFrameOffsetLeft = 0;
+      videoFrameOffsetTop = 0;
+      return;
+    }
+    const playerRect = playerFrameEl.getBoundingClientRect();
+    const videoRect = videoFrameEl.getBoundingClientRect();
+    videoFrameWidth = videoRect.width;
+    videoFrameHeight = videoRect.height;
+    videoFrameOffsetLeft = videoRect.left - playerRect.left;
+    videoFrameOffsetTop = videoRect.top - playerRect.top;
+  };
+
+  const observeVideoFrame = () => {
+    frameObserver?.disconnect();
     if (!playerFrameEl) return;
-    frameWidth = playerFrameEl.clientWidth;
-    frameHeight = playerFrameEl.clientHeight;
+    frameObserver = new ResizeObserver(updateVideoFrameMetrics);
+    frameObserver.observe(playerFrameEl);
+    const videoFrameEl = playerFrameEl.querySelector<HTMLElement>(".video-frame");
+    if (videoFrameEl) {
+      frameObserver.observe(videoFrameEl);
+    }
+    updateVideoFrameMetrics();
   };
 
   onMount(() => {
-    updateFrameSize();
-    window.addEventListener("resize", updateFrameSize);
-    return () => window.removeEventListener("resize", updateFrameSize);
+    updateVideoFrameMetrics();
+    window.addEventListener("resize", updateVideoFrameMetrics);
+    return () => window.removeEventListener("resize", updateVideoFrameMetrics);
   });
 
   $: if (playerFrameEl) {
-    updateFrameSize();
+    observeVideoFrame();
+  } else {
+    frameObserver?.disconnect();
+    frameObserver = null;
   }
 
   onDestroy(() => {
+    frameObserver?.disconnect();
     timelineStore.reset();
-    if (activeAssetPath) {
-      disposeAssetUrl(activeAssetPath);
-    }
   });
 
   let pointerRecords: PointerEventRecord[] = [];
@@ -119,43 +166,300 @@
     return `rgba(${r}, ${g}, ${b}, ${alpha})`;
   };
 
-  const svgToDataUrl = (svg: string) =>
-    `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
-
-  const pointerIconOptions = [
-    { id: "none", label: "Default", data: null },
+  const builtinPointerIconOptions: PointerIconOption[] = [
     {
-      id: "arrow",
-      label: "Arrow",
-      data: svgToDataUrl(
-        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path fill="currentColor" d="M5 4l14 7-6 2 6 2-14 7z"/></svg>`
-      ),
+      id: "cutecore-pink",
+      label: "Cutecore Pink",
+      data: `url("${cursorPackCursor}")`,
+      pressedData: `url("${cursorPackPointer}")`,
     },
-    {
-      id: "crosshair",
-      label: "Crosshair",
-      data: svgToDataUrl(
-        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="2" fill="none"/><line x1="12" y1="2" x2="12" y2="6" stroke="currentColor" stroke-width="2"/><line x1="12" y1="18" x2="12" y2="22" stroke="currentColor" stroke-width="2"/><line x1="2" y1="12" x2="6" y2="12" stroke="currentColor" stroke-width="2"/><line x1="18" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2"/></svg>`
-      ),
-    },
-    {
-      id: "dots",
-      label: "Dots",
-      data: svgToDataUrl(
-        `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="4" cy="4" r="2" fill="currentColor"/><circle cx="12" cy="4" r="2" fill="currentColor"/><circle cx="8" cy="12" r="2" fill="currentColor"/></svg>`
-      ),
-    },
-  ] as const;
+  ];
 
-  const pointerIconMap = new Map(pointerIconOptions.map((option) => [option.id, option.data]));
+  let zipPointerIconOptions: PointerIconOption[] = [];
+  let pointerIconOptions: PointerIconOption[] = builtinPointerIconOptions;
+  let pointerIconOptionMap = new Map<string, PointerIconOption>();
+  let zipPointerImportMessage = "";
 
-  const getPointerIconUrl = (selection: typeof pointerIconOptions[number]['id']) =>
-    pointerIconMap.get(selection) ?? null;
+  const supportedImageExtensions = new Set(["png", "svg", "webp", "jpg", "jpeg", "gif"]);
 
-  $: pointerIconUrl  = getPointerIconUrl(pointerIconSelection);
+  const getExtension = (name: string) => {
+    const match = name.toLowerCase().match(/\.([a-z0-9]+)$/i);
+    return match ? match[1] : "";
+  };
 
-  const updatePointerIconSelection = (selection: typeof pointerIconOptions[number]['id']) => {
-    if (!pointerIconMap.has(selection)) return;
+  const getMimeTypeForExtension = (ext: string) => {
+    switch (ext) {
+      case "png":
+        return "image/png";
+      case "svg":
+        return "image/svg+xml";
+      case "webp":
+        return "image/webp";
+      case "jpg":
+      case "jpeg":
+        return "image/jpeg";
+      case "gif":
+        return "image/gif";
+      default:
+        return null;
+    }
+  };
+
+  const arrayBufferToBase64 = (data: Uint8Array) => {
+    let binary = "";
+    const chunkSize = 0x8000;
+    for (let i = 0; i < data.length; i += chunkSize) {
+      const slice = data.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...slice);
+    }
+    return btoa(binary);
+  };
+
+  type ZipEntry = {
+    name: string;
+    compression: number;
+    compressedSize: number;
+    uncompressedSize: number;
+    dataOffset: number;
+  };
+
+  const parseZipEntries = (buffer: ArrayBuffer) => {
+    const entries: ZipEntry[] = [];
+    const view = new DataView(buffer);
+    const decoder = new TextDecoder("utf-8");
+    const total = buffer.byteLength;
+    let offset = 0;
+
+    while (offset + 30 <= total) {
+      const signature = view.getUint32(offset, true);
+      if (signature !== 0x04034b50) break;
+      const compressedSize = view.getUint32(offset + 18, true);
+      const uncompressedSize = view.getUint32(offset + 22, true);
+      const nameLen = view.getUint16(offset + 26, true);
+      const extraLen = view.getUint16(offset + 28, true);
+      const nameStart = offset + 30;
+      if (nameStart + nameLen > total) break;
+      const name = decoder.decode(new Uint8Array(buffer, nameStart, nameLen));
+      const dataOffset = nameStart + nameLen + extraLen;
+      if (dataOffset + compressedSize > total) break;
+      const compression = view.getUint16(offset + 8, true);
+
+      entries.push({
+        name,
+        compression,
+        compressedSize,
+        uncompressedSize,
+        dataOffset,
+      });
+
+      offset = dataOffset + compressedSize;
+    }
+
+    return entries;
+  };
+
+  const decompressZipEntry = async (entry: ZipEntry, buffer: ArrayBuffer) => {
+    if (entry.dataOffset + entry.compressedSize > buffer.byteLength) {
+      throw new Error("ZIP entry appears truncated");
+    }
+    const compressedData = new Uint8Array(buffer, entry.dataOffset, entry.compressedSize);
+    if (entry.compression === 0) {
+      return compressedData;
+    }
+    if (entry.compression === 8) {
+      const DSConstructor = (globalThis as typeof globalThis & {
+        DecompressionStream?: new (
+          format: string
+        ) => {
+          readable: ReadableStream<Uint8Array>;
+          writable: WritableStream<Uint8Array>;
+        };
+      }).DecompressionStream;
+      if (!DSConstructor) {
+        throw new Error("DecompressionStream is not supported in this environment");
+      }
+      const ds = new DSConstructor("deflate-raw");
+      const writer = ds.writable.getWriter();
+      writer.write(compressedData);
+      writer.close();
+      const reader = ds.readable.getReader();
+      const chunks: Uint8Array[] = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) {
+          chunks.push(value);
+          total += value.byteLength;
+        }
+      }
+      const result = new Uint8Array(total);
+      let cursor = 0;
+      for (const chunk of chunks) {
+        result.set(chunk, cursor);
+        cursor += chunk.byteLength;
+      }
+      return result;
+    }
+    throw new Error(`Unsupported ZIP compression format: ${entry.compression}`);
+  };
+
+  const sanitizeIdSegment = (value: string) =>
+    value
+      .replace(/[^a-zA-Z0-9-_]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/(^-|-$)/g, "")
+      .toLowerCase();
+
+  const handleZipPointerFile = async (event: Event) => {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file) return;
+    let message = "";
+    try {
+      const buffer = await file.arrayBuffer();
+      const entries = parseZipEntries(buffer);
+      if (!entries.length) {
+        message = "No supported pointer images were found inside this zip.";
+        zipPointerImportMessage = message;
+        return;
+      }
+
+      type PackCandidate = {
+        id: string;
+        label: string;
+        cursorEntry?: ZipEntry;
+        pointerEntry?: ZipEntry;
+      };
+
+      const baseFileName = file.name.replace(/\.[^.]+$/, "");
+      const packMap = new Map<string, PackCandidate>();
+
+      const normalizeEntryName = (entryName: string) =>
+        entryName.split("/").pop() ?? entryName;
+
+      const buildPackLabel = (name: string) => {
+        const trimmed = name.replace(/\.[^.]+$/, "").replace(/--(cursor|pointer).*/i, "").trim();
+        return trimmed || baseFileName;
+      };
+
+      for (const entry of entries) {
+        if (entry.name.endsWith("/")) continue;
+        const ext = getExtension(entry.name);
+        if (!supportedImageExtensions.has(ext)) continue;
+
+        const cleanedName = normalizeEntryName(entry.name);
+        const label = buildPackLabel(cleanedName);
+        const keyBase = sanitizeIdSegment(label) || sanitizeIdSegment(baseFileName) || `cursor-pack`;
+        const existing = packMap.get(keyBase);
+        const pack: PackCandidate = existing ?? { id: keyBase, label };
+
+        const normalized = cleanedName.toLowerCase();
+        if (normalized.includes("pointer")) {
+          pack.pointerEntry = pack.pointerEntry ?? entry;
+        } else {
+          pack.cursorEntry = pack.cursorEntry ?? entry;
+        }
+        packMap.set(keyBase, pack);
+      }
+
+      if (!packMap.size) {
+        message = "No supported pointer images were found inside this zip.";
+        zipPointerImportMessage = message;
+        return;
+      }
+
+      const existingZipCount = zipPointerIconOptions.length;
+      const loadedOptions: PointerIconOption[] = [];
+      let packIndex = 0;
+
+      for (const pack of packMap.values()) {
+        const cursorEntry = pack.cursorEntry ?? pack.pointerEntry;
+        if (!cursorEntry) continue;
+        const cursorMime = getMimeTypeForExtension(getExtension(cursorEntry.name));
+        if (!cursorMime) continue;
+
+        const cursorData = await decompressZipEntry(cursorEntry, buffer);
+        const cursorBase64 = arrayBufferToBase64(cursorData);
+        const cursorDataUrl = `data:${cursorMime};base64,${cursorBase64}`;
+
+        let pressedDataUrl = cursorDataUrl;
+        if (pack.pointerEntry) {
+          const pointerMime = getMimeTypeForExtension(getExtension(pack.pointerEntry.name));
+          if (pointerMime) {
+            const pointerData = await decompressZipEntry(pack.pointerEntry, buffer);
+            const pointerBase64 = arrayBufferToBase64(pointerData);
+            pressedDataUrl = `data:${pointerMime};base64,${pointerBase64}`;
+          }
+        }
+
+        const optionIdBase = sanitizeIdSegment(`${pack.label}-${file.name}`) || `cursor-pack-${packIndex}`;
+        loadedOptions.push({
+          id: `${optionIdBase}-${existingZipCount + packIndex}`,
+          label: pack.label,
+          data: `url("${cursorDataUrl}")`,
+          pressedData: `url("${pressedDataUrl}")`,
+        });
+        packIndex += 1;
+      }
+
+      zipPointerIconOptions = [...zipPointerIconOptions, ...loadedOptions];
+      if (loadedOptions.length > 0) {
+        pointerIconSelection = loadedOptions[0].id;
+        message = `Imported ${loadedOptions.length} pack${loadedOptions.length === 1 ? "" : "s"} from ${file.name}.`;
+      } else {
+        message = "No supported pointer images were found inside this zip.";
+      }
+    } catch (error) {
+      console.error("Failed to import pointer pack", error);
+      message = "Unable to extract pointer images from this zip file.";
+    } finally {
+      input.value = "";
+      zipPointerImportMessage = message;
+    }
+  };
+
+  $: pointerIconOptions = [...builtinPointerIconOptions, ...zipPointerIconOptions];
+
+  $: pointerIconOptionMap = new Map(pointerIconOptions.map((option) => [option.id, option]));
+
+  $: if (!pointerIconOptionMap.has(pointerIconSelection)) {
+    pointerIconSelection = builtinPointerIconOptions[0]?.id ?? "cutecore-pink";
+  }
+
+  $: {
+    const option = pointerIconOptionMap.get(pointerIconSelection);
+    pointerIconUrl = option?.data ?? null;
+    pointerIconPressedUrl = option?.pressedData ?? option?.data ?? null;
+
+    const unwrapCssUrl = (value: string | null): string | null => {
+      if (!value) return null;
+      let v = value.trim();
+
+      // Strip outer url(...) wrapper if present
+      if (v.startsWith("url(") && v.endsWith(")")) {
+        v = v.slice(4, -1).trim();
+      }
+
+      // Strip matching leading/trailing quotes
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1).trim();
+      }
+
+      // Defensive: remove any stray trailing quote that slipped through
+      if (v.endsWith('"') || v.endsWith("'")) {
+        v = v.slice(0, -1).trim();
+      }
+
+      return v;
+    };
+
+    pointerIconImageUrl = unwrapCssUrl(pointerIconUrl);
+    pointerIconPressedImageUrl = unwrapCssUrl(pointerIconPressedUrl);
+  }
+
+  const updatePointerIconSelection = (selection: string) => {
+    if (!pointerIconOptionMap.has(selection)) return;
     pointerIconSelection = selection;
   };
 
@@ -169,8 +473,8 @@
   $: {
     const canvasWidth = $canvasDimensions.width || 1;
     const canvasHeight = $canvasDimensions.height || 1;
-    const scaleX = canvasWidth ? frameWidth / canvasWidth : 0;
-    const scaleY = canvasHeight ? frameHeight / canvasHeight : 0;
+    const scaleX = canvasWidth ? videoFrameWidth / canvasWidth : 0;
+    const scaleY = canvasHeight ? videoFrameHeight / canvasHeight : 0;
     const placementX = screenPlacement
       ? screenPlacement.x + pointerState.x * screenPlacement.width
       : pointerState.x * canvasWidth;
@@ -178,75 +482,39 @@
       ? screenPlacement.y + pointerState.y * screenPlacement.height
       : pointerState.y * canvasHeight;
 
-    pointerShadow = hexToRgba(pointerIndicatorColor, 0.45);
+    pointerShadow = hexToRgba(POINTER_COLOR, 0.45);
 
-    const pointerLeft = placementX * scaleX;
-    const pointerTop = placementY * scaleY;
+    const pointerLeft = videoFrameOffsetLeft + placementX * scaleX;
+    const pointerTop = videoFrameOffsetTop + placementY * scaleY;
+    const pointerSourceIcon = pointerState.isPressed
+      ? pointerIconPressedUrl ?? pointerIconUrl
+      : pointerIconUrl;
+    const pointerHasIcon = Boolean(pointerSourceIcon);
+    const pointerBackground = pointerHasIcon ? "transparent" : POINTER_COLOR;
+    const pointerBorderRadius = pointerHasIcon ? "4px" : "999px";
 
-    pointerStyle =
+    const pointerShouldShow =
       includePointerTrack &&
-      pointerState.visible &&
-      frameWidth > 0 &&
-      frameHeight > 0 &&
+      pointerState.kind !== null &&
+      videoFrameWidth > 0 &&
+      videoFrameHeight > 0 &&
       scaleX > 0 &&
-      scaleY > 0
-        ? `left: ${pointerLeft}px; top: ${pointerTop}px; opacity: 1; --pointer-size: ${clamp(
-            pointerIndicatorSize,
-            6,
-            64
-          )}px; --pointer-color: ${pointerIndicatorColor}; --pointer-shadow: ${pointerShadow}; --pointer-icon: ${
-            pointerIconUrl ?? "none"
-          };`
-        : "opacity: 0;";
+      scaleY > 0;
+
+    pointerStyle = pointerShouldShow
+      ? `left: ${pointerLeft}px; top: ${pointerTop}px; opacity: 1; --pointer-size: ${clamp(
+          pointerIndicatorSize,
+          6,
+          64
+        )}px; --pointer-color: ${POINTER_COLOR}; --pointer-shadow: ${pointerShadow}; --pointer-icon: ${
+          pointerSourceIcon ?? "none"
+        }; --pointer-background: ${pointerBackground}; --pointer-border-radius: ${pointerBorderRadius};`
+      : "opacity: 0;";
   }
 
   const updatePointerSize = (value: number) => {
     pointerIndicatorSize = clamp(value, 6, 64);
   };
-
-  const updatePointerColor = (value: string) => {
-    pointerIndicatorColor = value || "#f97316";
-  };
-
-  const loadVideoAsset = async (asset: RecordingAsset | null) => {
-    const filePath = asset?.filePath ?? null;
-    if (activeAssetPath === filePath) return;
-    if (activeAssetPath) {
-      disposeAssetUrl(activeAssetPath);
-    }
-    activeAssetPath = filePath;
-    videoSource = "";
-    if (!filePath) {
-      return;
-    }
-    const token = ++loadToken;
-    const url = await getAssetUrlFromFile(filePath, asset?.mimeType);
-    if (token !== loadToken || activeAssetPath !== filePath) {
-      disposeAssetUrl(filePath);
-      return;
-    }
-    videoSource = url;
-  };
-
-  const findAssetByPath = (path: string | undefined | null): RecordingAsset | null => {
-    if (!$lastRecording || !path) return null;
-    return (
-      Object.values($lastRecording.assets).find(
-        (asset) => asset?.filePath === path
-      ) ?? null
-    );
-  };
-
-  $: if ($lastRecording) {
-    const previewAsset =
-      findAssetByPath($lastRecording.previewPath) ??
-      $lastRecording.assets.screen ??
-      $lastRecording.assets.webcam ??
-      null;
-    void loadVideoAsset(previewAsset);
-  } else {
-    void loadVideoAsset(null);
-  }
 
   $: clickEvents = $lastRecording
     ? ($lastRecording.events.filter((event) => event.kind === "click" || event.kind === "pointerdown") as PointerEventRecord[])
@@ -296,6 +564,10 @@
       showMouse: includePointerTrack,
       includeAudio: includeAudioTrack,
     },
+    pointerRecords,
+    pointerIconUrl: pointerIconImageUrl,
+    pointerIconPressedUrl: pointerIconPressedImageUrl,
+    pointerSize: pointerIndicatorSize,
     onProgress,
   });
 
@@ -369,17 +641,16 @@
   bind:includeAudioTrack={includeAudioTrack}
   {pointerStyle}
   pointerSize={pointerIndicatorSize}
-  pointerColor={pointerIndicatorColor}
-  pointerIconUrl={pointerIconUrl}
   pointerIconSelection={pointerIconSelection}
   pointerIconOptions={pointerIconOptions}
   onPointerSizeChange={updatePointerSize}
-  onPointerColorChange={updatePointerColor}
   onPointerIconSelect={updatePointerIconSelection}
+  zipPointerImportMessage={zipPointerImportMessage}
+  onZipPointerFileChange={handleZipPointerFile}
   {clickEvents}
   {sortedClickEvents}
-  {videoDuration}
-  {videoCurrentTime}
+  bind:videoDuration={videoDuration}
+  bind:videoCurrentTime={videoCurrentTime}
   {isRenderingVideo}
   {renderProgress}
   {downloadEditedVideo}

@@ -1,6 +1,6 @@
 <script lang="ts">
   import CompositePlayer from "./CompositePlayer.svelte";
-  import RangeInput from "../ui/RangeInput.svelte";
+  import PointerStyleControls from "./PointerStyleControls.svelte";
   import Timeline from "../Timeline.svelte";
   import type { PointerEventRecord } from "../../stores";
   import type {
@@ -32,13 +32,17 @@
   export let includeAudioTrack = true;
   export let pointerStyle = "opacity: 0;";
   export let pointerSize = 14;
-  export let pointerColor = "#f97316";
-  export let pointerIconUrl: string | null = null;
   export let pointerIconSelection = "none";
-  export let pointerIconOptions: readonly { id: string; label: string; data: string | null }[] = [];
+  export let pointerIconOptions: readonly {
+    id: string;
+    label: string;
+    data: string | null;
+    pressedData?: string | null;
+  }[] = [];
   export let onPointerSizeChange: (value: number) => void = () => {};
-  export let onPointerColorChange: (value: string) => void = () => {};
   export let onPointerIconSelect: (selection: string) => void = () => {};
+  export let zipPointerImportMessage = "";
+  export let onZipPointerFileChange: (event: Event) => void = () => {};
   export let clickEvents: PointerEventRecord[] = [];
   export let sortedClickEvents: PointerEventRecord[] = [];
   export let videoDuration = 0;
@@ -51,18 +55,6 @@
   export let addZoomForClick: (event: PointerEventRecord) => void;
   export let timelineDuration = 0;
 
-  const handlePointerSizeInput = (event: CustomEvent<number>) => {
-    onPointerSizeChange?.(event.detail);
-  };
-
-  const handlePointerColorInput = (event: Event) => {
-    const target = event.target as HTMLInputElement;
-    onPointerColorChange?.(target.value);
-  };
-
-  const handlePointerIconSelect = (id: string) => {
-    onPointerIconSelect?.(id);
-  };
 </script>
 
 {#if lastRecording && assets}
@@ -116,47 +108,15 @@
         <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includeAudioTrack} /> <span>Include audio</span></label>
       </div>
 
-      <div class="pointer-style-panel">
-        <h3>Pointer style</h3>
-        <RangeInput
-          name="pointerSize"
-          title="Pointer size"
-          min={6}
-          max={64}
-          step={2}
-          value={pointerSize}
-          on:input={handlePointerSizeInput}
-          showPercentage={false}
-        />
-        <div class="pointer-style-row">
-          <label class="pointer-color-picker">
-            <span>Pointer color</span>
-            <input type="color" value={pointerColor} on:input={handlePointerColorInput} />
-          </label>
-          <div
-            class="pointer-preview"
-            style={`--preview-color: ${pointerColor}; --preview-icon: ${
-              pointerIconUrl ? pointerIconUrl : "none"
-            };`}
-          />
-        </div>
-        <p class="pointer-hint">Choose a pointer shape below.</p>
-        <div class="pointer-icon-options">
-          {#each pointerIconOptions as option (option.id)}
-            <button
-              class={`pointer-icon-option ${pointerIconSelection === option.id ? "active" : ""}`}
-              type="button"
-              on:click={() => handlePointerIconSelect(option.id)}
-            >
-            <span
-              class="pointer-icon-option-preview"
-              style={`background-image: ${option.data ?? "none"}; --preview-color: ${pointerColor};`}
-            />
-              <span>{option.label}</span>
-            </button>
-          {/each}
-        </div>
-      </div>
+      <PointerStyleControls
+        pointerSize={pointerSize}
+        pointerIconSelection={pointerIconSelection}
+        pointerIconOptions={pointerIconOptions}
+        zipPointerImportMessage={zipPointerImportMessage}
+        onPointerSizeChange={onPointerSizeChange}
+        onPointerIconSelect={onPointerIconSelect}
+        onZipPointerFileChange={onZipPointerFileChange}
+      />
 
       <div class="button-stack">
         <button class="primary" on:click={downloadEditedVideo} disabled={isRenderingVideo}>
@@ -246,14 +206,12 @@
     position: absolute;
     width: var(--pointer-size, 14px);
     height: var(--pointer-size, 14px);
-    border-radius: 999px;
-    background-color: var(--pointer-color, #f97316);
-    color: var(--pointer-color, #f97316);
+    border-radius: var(--pointer-border-radius, 0px);
+    background-color: transparent;
     background-image: var(--pointer-icon, none);
-    background-size: cover;
+    background-size: contain;
     background-position: center;
     background-repeat: no-repeat;
-    box-shadow: 0 0 0 4px var(--pointer-shadow, rgba(249, 115, 22, 0.4));
     pointer-events: none;
     transition: opacity 0.2s ease;
     transform: translate(-50%, -50%);
@@ -306,97 +264,6 @@
     border: solid #fff;
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
-  }
-
-  .pointer-style-panel {
-    border-top: 1px solid #e5e7eb;
-    padding-top: 1.25rem;
-    display: flex;
-    flex-direction: column;
-    gap: 0.8rem;
-  }
-
-  .pointer-style-panel h3 {
-    margin: 0;
-    font-size: 0.9rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: #475569;
-  }
-
-  .pointer-style-row {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-  }
-
-  .pointer-color-picker {
-    font-size: 0.95rem;
-    color: #334155;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .pointer-color-picker input {
-    width: 2.5rem;
-    height: 2.5rem;
-    border: none;
-    padding: 0;
-    background: none;
-    cursor: pointer;
-  }
-
-  .pointer-preview {
-    width: 2.5rem;
-    height: 2.5rem;
-    border-radius: 999px;
-    border: 1px solid #cbd5e1;
-    background-color: var(--preview-color, #f97316);
-    background-image: var(--preview-icon, none);
-    background-size: cover;
-    background-position: center;
-    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.05);
-  }
-
-  .pointer-icon-options {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-  }
-
-  .pointer-icon-option {
-    border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-    padding: 0.35rem 0.6rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.45rem;
-    font-size: 0.85rem;
-    background: #fff;
-    color: #334155;
-    cursor: pointer;
-  }
-
-  .pointer-icon-option.active {
-    border-color: #111827;
-  }
-
-  .pointer-icon-option-preview {
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: 0.45rem;
-    border: 1px solid #cbd5e1;
-    background-color: var(--preview-color, #f97316);
-    background-image: var(--option-icon, none);
-    background-size: cover;
-    background-position: center;
-  }
-
-  .pointer-hint {
-    margin: 0;
-    font-size: 0.75rem;
-    color: #64748b;
   }
 
   .review-aside h1 {

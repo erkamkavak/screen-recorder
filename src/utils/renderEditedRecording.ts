@@ -16,7 +16,11 @@ import type {
   Background,
   Share,
 } from "../stores";
+import type { PointerEventRecord } from "../stores";
 import { getAssetUrlFromFile } from "./assetStorage";
+import { computePointerState } from "./pointerState";
+import cursorPackCursor from "../assets/cursors/cutecore-pink-cursor.png?url";
+import cursorPackPointer from "../assets/cursors/cutecore-pink-pointer.png?url";
 
 interface RenderToggleConfig {
   showScreen: boolean;
@@ -35,6 +39,10 @@ export interface RenderCompositeOptions {
   theme: Theme;
   background: Background;
   toggles: RenderToggleConfig;
+  pointerRecords?: PointerEventRecord[];
+  pointerIconUrl?: string | null;
+  pointerIconPressedUrl?: string | null;
+  pointerSize?: number;
 }
 
 export type RenderResult =
@@ -140,6 +148,19 @@ const createAudioElement = (assetUrl: string) => {
   return audio;
 };
 
+const loadPointerImage = (src?: string | null) =>
+  new Promise<HTMLImageElement | null>((resolve) => {
+    if (!src) {
+      resolve(null);
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(img);
+    img.src = src;
+  });
+
 type CapturableMediaElement = HTMLMediaElement & {
   captureStream?: () => MediaStream;
   mozCaptureStream?: () => MediaStream;
@@ -191,7 +212,6 @@ export const renderCompositeRecording = async (
   await waitForMetadata(screenVideo);
 
   const shouldLoadWebcam = options.toggles.showWebcam;
-  const shouldLoadMouse = options.toggles.showMouse;
 
   const webcamUrl = shouldLoadWebcam ? await loadAssetUrl(assets.webcam) : null;
   const webcamVideo = webcamUrl ? createVideoElement(webcamUrl) : null;
@@ -199,11 +219,11 @@ export const renderCompositeRecording = async (
     await waitForMetadata(webcamVideo);
   }
 
-  const mouseUrl = shouldLoadMouse ? await loadAssetUrl(assets.mouse) : null;
-  const mouseVideo = mouseUrl ? createVideoElement(mouseUrl) : null;
-  if (mouseVideo) {
-    await waitForMetadata(mouseVideo);
-  }
+  const pointerIconImage = await loadPointerImage(options.pointerIconUrl ?? cursorPackCursor);
+  const pointerPressedIconImage = await loadPointerImage(
+    options.pointerIconPressedUrl ?? options.pointerIconUrl ?? cursorPackPointer
+  );
+  const pointerRecords = options.pointerRecords ?? [];
 
   // Use conservative frame rate to reduce memory usage
   // 30fps is fine for most content, but lower FPS uses significantly less memory
@@ -299,7 +319,6 @@ export const renderCompositeRecording = async (
   await Promise.all([
     seekVideo(screenVideo, trimStart),
     webcamVideo ? seekVideo(webcamVideo, trimStart) : Promise.resolve(),
-    mouseVideo ? seekVideo(mouseVideo, trimStart) : Promise.resolve(),
   ]);
 
   const renderStream = canvas.captureStream(frameRate);
@@ -322,12 +341,12 @@ export const renderCompositeRecording = async (
     }
   }
 
-  const mime = getPreferredMimeType();
+  const mime = getPreferredMimeType({ includeAudio: Boolean(audioElement) });
   // Lower bitrate to reduce memory usage (4 Mbps is still high quality)
   const recorder = new MediaRecorder(renderStream, {
     mimeType: mime.mimeType,
     videoBitsPerSecond: 4_000_000,
-    audioBitsPerSecond: 128_000,
+    // audioBitsPerSecond: 128_000,
   });
   const chunks: Blob[] = [];
   const electronAPI =
@@ -442,11 +461,6 @@ export const renderCompositeRecording = async (
       try { webcamVideo.remove(); } catch {}
     }
     
-    if (mouseVideo) { 
-      try { mouseVideo.pause(); mouseVideo.src = ""; mouseVideo.load(); } catch {}
-      try { mouseVideo.remove(); } catch {}
-    }
-    
     if (audioElement) {
       try { audioElement.pause(); audioElement.src = ""; audioElement.load(); } catch {}
       try { audioElement.remove(); } catch {}
@@ -479,7 +493,6 @@ export const renderCompositeRecording = async (
     // Revoke blob URLs
     maybeRevokeUrl(screenUrl);
     maybeRevokeUrl(webcamUrl);
-    maybeRevokeUrl(mouseUrl);
     maybeRevokeUrl(audioUrl);
     
     // Clear MediaRecorder event handlers to prevent memory leaks
@@ -540,8 +553,8 @@ export const renderCompositeRecording = async (
     }
     ctx.restore();
 
-    // Draw mouse without zoom
-    if (toggles.showMouse && mouseVideo) {
+    // Draw pointer overlay without zoom
+    if (toggles.showMouse && pointerIconImage && pointerRecords.length) {
       const placement = calculateScreenPlacement(
         options.canvasSize,
         drawArgs.activeShare,
@@ -549,13 +562,22 @@ export const renderCompositeRecording = async (
         options.generalLayoutState
       );
       if (placement) {
-        ctx.drawImage(
-          mouseVideo,
-          placement.x,
-          placement.y,
-          placement.width,
-          placement.height
-        );
+        const pointerState = computePointerState(current, pointerRecords);
+        if (pointerState.visible) {
+          const icon =
+            pointerState.isPressed && pointerPressedIconImage
+              ? pointerPressedIconImage
+              : pointerIconImage;
+
+          if (icon && icon.naturalWidth && icon.naturalHeight) {
+            // Slightly enlarge the rendered pointer compared to the base size
+            const POINTER_RENDER_SCALE = 3.25;
+            const size = (options.pointerSize ?? 18) * POINTER_RENDER_SCALE * scaleFactor;
+            const pointerLeft = (placement.x + pointerState.x * placement.width) * scaleFactor;
+            const pointerTop = (placement.y + pointerState.y * placement.height) * scaleFactor;
+            ctx.drawImage(icon, pointerLeft - size / 2, pointerTop - size / 2, size, size);
+          }
+        }
       }
     }
 
@@ -611,7 +633,7 @@ export const renderCompositeRecording = async (
   screenVideo.addEventListener("timeupdate", handleTimeUpdate);
 
   try {
-    await Promise.all([screenVideo.play(), webcamVideo?.play(), mouseVideo?.play()].map((promise) => promise ?? Promise.resolve()));
+    await Promise.all([screenVideo.play(), webcamVideo?.play()].map((promise) => promise ?? Promise.resolve()));
   } catch (error) {
     stopLoop();
     // Cancel Electron-side streaming if active
