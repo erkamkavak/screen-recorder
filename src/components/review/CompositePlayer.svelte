@@ -33,6 +33,8 @@
 
   export let duration: number = 0;
   export let currentTime: number = 0;
+  export let screenWidth: number = 0;
+  export let screenHeight: number = 0;
 
   let canvasEl: HTMLCanvasElement;
   let ctx: CanvasRenderingContext2D | null = null;
@@ -52,34 +54,81 @@
   let animationId: number;
   let playing = false;
 
-  const waitForMetadata = (media: HTMLMediaElement) =>
-    new Promise<void>((resolve, reject) => {
+  const waitForMetadata = (media: HTMLMediaElement, timeoutMs = 5000) =>
+    new Promise<void>((resolve) => {
       if (media.readyState >= 1) {
+        console.log("[waitForMetadata] already ready", {
+          src: media.currentSrc,
+          readyState: media.readyState,
+          duration: media.duration,
+        });
         resolve();
         return;
       }
+      let resolved = false;
       const onLoaded = () => {
+        if (resolved) return;
+        resolved = true;
         cleanup();
+        console.log("[waitForMetadata] loadedmetadata", {
+          src: media.currentSrc,
+          readyState: media.readyState,
+          duration: media.duration,
+        });
+        resolve();
+      };
+      const onCanPlay = () => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        console.log("[waitForMetadata] canplay", {
+          src: media.currentSrc,
+          readyState: media.readyState,
+          duration: media.duration,
+        });
         resolve();
       };
       const onError = () => {
-        cleanup();
-        reject(new Error("Failed to load media metadata"));
+        const err = media.error;
+        console.warn("[waitForMetadata] media error (will retry with timeout)", {
+          src: media.currentSrc,
+          readyState: media.readyState,
+          networkState: media.networkState,
+          errorCode: err ? err.code : null,
+          errorMessage: err && (err as any).message,
+        });
+        // Don't reject - let timeout handle it
       };
       const cleanup = () => {
         media.removeEventListener("loadedmetadata", onLoaded);
+        media.removeEventListener("canplay", onCanPlay);
         media.removeEventListener("error", onError);
       };
       media.addEventListener("loadedmetadata", onLoaded);
+      media.addEventListener("canplay", onCanPlay);
       media.addEventListener("error", onError);
+      
+      // Timeout fallback - proceed anyway after timeout
+      setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        cleanup();
+        console.warn("[waitForMetadata] timeout - proceeding anyway", {
+          src: media.currentSrc,
+          readyState: media.readyState,
+        });
+        resolve();
+      }, timeoutMs);
     });
 
   const createVideo = (src: string) => {
     const v = document.createElement("video");
-    v.src = src;
+    v.preload = "auto";
     v.crossOrigin = "anonymous";
     v.playsInline = true;
     v.muted = true;
+    v.src = src;
+    v.load();
     return v;
   };
 
@@ -122,6 +171,10 @@
       width: screenVideo.videoWidth,
       height: screenVideo.videoHeight,
     };
+    
+    // Export screen dimensions for pointer overlay positioning
+    screenWidth = screenVideo.videoWidth;
+    screenHeight = screenVideo.videoHeight;
 
     drawArgs = {
       ctx,
@@ -141,8 +194,20 @@
       screenLayoutState,
     };
 
-    duration = screenVideo.duration || 0;
+    // Handle NaN duration (can happen if metadata didn't load properly)
+    const videoDuration = screenVideo.duration;
+    duration = isFinite(videoDuration) && videoDuration > 0 ? videoDuration : 0;
     currentTime = screenVideo.currentTime || 0;
+    
+    // If duration is still 0, try to get it from durationchange event
+    if (duration === 0) {
+      screenVideo.addEventListener("durationchange", () => {
+        const d = screenVideo?.duration;
+        if (d && isFinite(d) && d > 0) {
+          duration = d;
+        }
+      });
+    }
 
     // Draw initial frame so the canvas isn't blank before play
     drawFrame();

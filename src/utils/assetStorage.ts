@@ -3,6 +3,8 @@ type CachedAssetUrl = {
   isObjectUrl: boolean;
 };
 
+import { backendAPI } from "./backendAPI";
+
 const urlCache: Map<string, CachedAssetUrl> = new Map();
 
 const safeRevokeUrl = (url: string | undefined) => {
@@ -12,19 +14,25 @@ const safeRevokeUrl = (url: string | undefined) => {
   } catch {}
 };
 
-const electronAPI = typeof window !== "undefined" ? window.electronAPI ?? null : null;
-
 const readAssetBuffer = async (filePath: string): Promise<ArrayBuffer> => {
-  if (!electronAPI?.readRecordingAsset) {
-    throw new Error("Asset reading is not available");
+  const data = await backendAPI.readRecordingAsset(filePath) as unknown;
+  // Tauri returns Vec<u8> as number[] or Uint8Array, convert to ArrayBuffer
+  if (data instanceof ArrayBuffer) {
+    return data;
   }
-  return electronAPI.readRecordingAsset(filePath);
+  if (data instanceof Uint8Array) {
+    return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer;
+  }
+  // Handle array of numbers (Tauri's default serialization of Vec<u8>)
+  if (Array.isArray(data)) {
+    return new Uint8Array(data).buffer;
+  }
+  throw new Error("Unexpected data format from backend");
 };
 
-const tryGetFileUrlFromElectron = async (filePath: string): Promise<string | null> => {
-  if (!electronAPI?.getRecordingAssetUrl) return null;
+const tryGetFileUrlFromBackend = async (filePath: string): Promise<string | null> => {
   try {
-    return await electronAPI.getRecordingAssetUrl(filePath);
+    return await backendAPI.getRecordingAssetUrl(filePath);
   } catch {
     return null;
   }
@@ -38,17 +46,29 @@ export const getAssetUrlFromFile = async (
     return urlCache.get(filePath)!.url;
   }
 
-  const electronUrl = await tryGetFileUrlFromElectron(filePath);
+  // Check if this is a video/audio file - WebKit has issues with custom protocols for media
+  const isMediaFile = mimeType?.startsWith("video/") || mimeType?.startsWith("audio/") ||
+    /\.(webm|mp4|mkv|avi|mov|mp3|wav|ogg|m4a)$/i.test(filePath);
+
   let url: string;
   let isObjectUrl = false;
 
-  if (electronUrl) {
-    url = electronUrl;
-  } else {
+  if (isMediaFile) {
     const buffer = await readAssetBuffer(filePath);
     const blob = new Blob([buffer], { type: mimeType || "application/octet-stream" });
     url = URL.createObjectURL(blob);
     isObjectUrl = true;
+  } else {
+    const backendUrl = await tryGetFileUrlFromBackend(filePath);
+
+    if (backendUrl) {
+      url = backendUrl;
+    } else {
+      const buffer = await readAssetBuffer(filePath);
+      const blob = new Blob([buffer], { type: mimeType || "application/octet-stream" });
+      url = URL.createObjectURL(blob);
+      isObjectUrl = true;
+    }
   }
 
   urlCache.set(filePath, { url, isObjectUrl });
