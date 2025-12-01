@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "description": "Screen recording application for capturing video, audio, and input events",
   "author": "Formidable Labs <hello@formidable.com> | erkamkavak",
   "license": "MIT",
   "scripts": {
@@ -11,7 +12,15 @@
     "dev:electron": "cross-env ELECTRON_DISABLE_SANDBOX=1 wait-on tcp:5173 && electron --no-sandbox .",
     "build": "vite build",
     "preview": "vite preview",
-    "check": "svelte-check --tsconfig ./tsconfig.json"
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "build:native": "cd native && pnpm install && pnpm build",
+    "build:native:debug": "cd native && pnpm install && pnpm build:debug",
+    "build:electron": "pnpm build:native && vite build && electron-builder",
+    "build:electron:linux": "pnpm build:native && vite build && electron-builder --linux",
+    "build:electron:win": "pnpm build:native && vite build && electron-builder --win",
+    "build:electron:mac": "pnpm build:native && vite build && electron-builder --mac",
+    "build:electron:all": "pnpm build:native && vite build && electron-builder --mac --win --linux",
+    "postinstall": "cd native && pnpm install"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^1.0.1",
@@ -21,7 +30,7 @@
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
     "electron": "^31.2.0",
-    "fix-webm-duration": "^1.0.5",
+    "electron-builder": "^26.0.12",
     "postcss": "^8.4.16",
     "prettier": "^2.7.1",
     "prettier-plugin-svelte": "^2.7.0",
@@ -37,6 +46,7 @@
   "dependencies": {
     "@apsc/color": "^0.0.5",
     "clsx": "^2.0.0",
+    "fix-webm-duration": "^1.0.5",
     "locally-unique-id-generator": "^0.1.5",
     "uiohook-napi": "^1.5.4",
     "zod": "^3.18.0"
@@ -44,5 +54,76 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "main": "electron/main.cjs"
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.formidable.clips",
+    "productName": "Clips",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "native/**/*.node",
+      "native/index.js",
+      "native/index.d.ts",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources",
+        "to": "resources"
+      }
+    ],
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "category": "AudioVideo",
+      "desktop": {
+        "entry": {
+          "Name": "Clips",
+          "Comment": "Screen recording application",
+          "Keywords": "screen;record;video;"
+        }
+      },
+      "executableArgs": ["--no-sandbox"]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "resources/icon.ico"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "category": "public.app-category.productivity",
+      "icon": "resources/icon.icns"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
+  }
 }
