@@ -19,6 +19,7 @@ import type {
 import type { PointerEventRecord } from "../stores";
 import { getAssetUrlFromFile } from "./assetStorage";
 import { computePointerState } from "./pointerState";
+import { backendAPI } from "./backendAPI";
 import cursorPackCursor from "../assets/cursors/cutecore-pink-cursor.png?url";
 import cursorPackPointer from "../assets/cursors/cutecore-pink-pointer.png?url";
 
@@ -349,19 +350,16 @@ export const renderCompositeRecording = async (
     // audioBitsPerSecond: 128_000,
   });
   const chunks: Blob[] = [];
-  const electronAPI =
-    typeof window !== "undefined" ? window.electronAPI ?? null : null;
-  const supportsStreaming =
-    Boolean(electronAPI?.startRenderStream && electronAPI?.appendRenderChunk);
   let renderFilePath: string | null = null;
-  if (supportsStreaming && electronAPI?.startRenderStream) {
-    try {
-      renderFilePath = await electronAPI.startRenderStream("rendered.webm");
-    } catch (error) {
-      console.warn("Failed to initialize streaming render", error);
-      renderFilePath = null;
-    }
+  
+  // Try to initialize streaming render
+  try {
+    renderFilePath = await backendAPI.startRenderStream("rendered.webm");
+  } catch (error) {
+    console.warn("Failed to initialize streaming render, falling back to blob mode", error);
+    renderFilePath = null;
   }
+  
   const MAX_PENDING_CHUNKS = 1;
   let skipFrames = 0;
   let chunkQueue: RenderChunkQueue | null = null;
@@ -369,14 +367,11 @@ export const renderCompositeRecording = async (
   recorder.ondataavailable = (event) => {
     if (!event.data || event.data.size === 0) return;
 
-    if (renderFilePath && electronAPI?.appendRenderChunk) {
+    if (renderFilePath) {
       if (!chunkQueue) {
         chunkQueue = createRenderChunkQueue(async (blob) => {
           const buffer = await blob.arrayBuffer();
-          await electronAPI.appendRenderChunk({
-            filePath: renderFilePath!,
-            buffer,
-          });
+          await backendAPI.appendRenderChunk(renderFilePath!, buffer);
         });
       }
       chunkQueue.enqueue(event.data);
@@ -400,12 +395,7 @@ export const renderCompositeRecording = async (
 
     let rawBlob: Blob;
     if (renderFilePath) {
-      if (electronAPI?.patchRenderFile) {
-        await electronAPI.patchRenderFile({
-          filePath: renderFilePath,
-          durationMs: effectiveDurationMs,
-        });
-      }
+      await backendAPI.patchRenderFile(renderFilePath, effectiveDurationMs);
       debugLog("Finalize returning file", { filePath: renderFilePath });
       return {
         type: "file",
@@ -636,9 +626,9 @@ export const renderCompositeRecording = async (
     await Promise.all([screenVideo.play(), webcamVideo?.play()].map((promise) => promise ?? Promise.resolve()));
   } catch (error) {
     stopLoop();
-    // Cancel Electron-side streaming if active
-    if (renderFilePath && electronAPI?.cancelRenderStream) {
-      electronAPI.cancelRenderStream(renderFilePath).catch(() => {});
+    // Cancel streaming if active
+    if (renderFilePath) {
+      backendAPI.cancelRenderStream(renderFilePath).catch(() => {});
     }
     throw error instanceof Error ? error : new Error("Unable to play media for rendering");
   }
@@ -647,9 +637,9 @@ export const renderCompositeRecording = async (
 
   const result = await resultPromise
     .catch(async (error) => {
-      // Cancel Electron-side streaming on error
-      if (renderFilePath && electronAPI?.cancelRenderStream) {
-        await electronAPI.cancelRenderStream(renderFilePath).catch(() => {});
+      // Cancel streaming on error
+      if (renderFilePath) {
+        await backendAPI.cancelRenderStream(renderFilePath).catch(() => {});
       }
       throw error;
     })
