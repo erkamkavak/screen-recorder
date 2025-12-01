@@ -1,11 +1,21 @@
-export const getPreferredMimeType = () => {
+export const getPreferredMimeType = (options?: { includeAudio?: boolean }) => {
+  const includeAudio = options?.includeAudio ?? false;
   // Strongly prefer webm with VP9/VP8 to avoid Electron ffmpeg pixel format issues
-  const preferred: { mimeType: string; ext: string }[] = [
+  const preferredVideo: { mimeType: string; ext: string }[] = [
     { mimeType: "video/webm;codecs=vp9", ext: "webm" },
     { mimeType: "video/webm;codecs=vp8", ext: "webm" },
     { mimeType: "video/webm", ext: "webm" },
   ];
-  const fallbackList = [...preferred, ...MIME_TYPES];
+  const preferredAudio: { mimeType: string; ext: string }[] = includeAudio
+    ? [
+        { mimeType: "video/webm;codecs=vp9,opus", ext: "webm" },
+        { mimeType: "video/webm;codecs=vp8,opus", ext: "webm" },
+        { mimeType: "video/webm;codecs=vp9", ext: "webm" },
+      ]
+    : [];
+  const fallbackList = includeAudio
+    ? [...preferredAudio, ...preferredVideo, ...MIME_TYPES]
+    : [...preferredVideo, ...MIME_TYPES];
   const found = fallbackList.find((m) => {
     try {
       return MediaRecorder.isTypeSupported(m.mimeType);
