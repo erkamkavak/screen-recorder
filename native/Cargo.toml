@@ -1,0 +1,28 @@
+[package]
+name = "clips-native"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["napi8", "async", "serde-json"] }
+napi-derive = "2"
+xcap = "0.7.1"
+image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
+base64 = "0.21"
+tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
+parking_lot = "0.12"
+lazy_static = "1.4"
+log = "0.4"
+env_logger = "0.10"
+mouse_position = "0.1"
+rdev = "0.5"
+
+[build-dependencies]
+napi-build = "2"
+
+[profile.release]
+lto = true
+opt-level = 3
