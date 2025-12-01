@@ -18,6 +18,7 @@
     micState,
     webcamState,
   } from "../stores.js";
+  import { backendAPI } from "../utils/backendAPI";
   import ActionButton from "./ui/ActionButton.svelte";
 
   const dispatch = createEventDispatcher();
@@ -50,20 +51,41 @@
     shares = [...$screenShareState.shares];
   }
 
+  const downloadDataUrl = (dataUrl: string, fileName: string) => {
+    const anchor = document.createElement("a");
+    anchor.href = dataUrl;
+    anchor.download = fileName;
+    document.body.appendChild(anchor);
+    anchor.click();
+    setTimeout(() => {
+      anchor.remove();
+    }, 200);
+  };
+
   const exportPreviewScreenshot = async () => {
+    const active = $screenShareState.shares[$screenShareState.activeIndex ?? 0];
+    const targetId = active?.id ?? "monitor:0";
+    const captureType = targetId?.startsWith("window:") ? "window" : "monitor";
+    try {
+      const dataUrl = await backendAPI.takeScreenshot({
+        targetId,
+        captureType,
+        includeCursor: true,
+      });
+      downloadDataUrl(dataUrl, "preview-screenshot.png");
+      return;
+    } catch (error) {
+      console.warn("Native screenshot failed, falling back to preview capture", error);
+    }
+
     const capture = $previewScreenshotCapture;
     if (!capture) return;
     const blob = await capture();
     if (!blob) return;
     const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = "preview-screenshot.png";
-    document.body.appendChild(anchor);
-    anchor.click();
+    downloadDataUrl(url, "preview-screenshot.png");
     setTimeout(() => {
       URL.revokeObjectURL(url);
-      anchor.remove();
     }, 500);
   };
 </script>
