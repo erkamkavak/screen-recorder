@@ -4,6 +4,7 @@ import type {
   KeyEventRecord,
   PointerEventRecord,
 } from "../../stores";
+import { backendAPI } from "../../utils/backendAPI";
 
 type ElectronInputPayload = {
   kind: InputEventRecord["kind"];
@@ -49,8 +50,8 @@ export function createInputCapture({
   let unsubscribeElectronEvents: (() => void) | null = null;
   let electronCaptureActive = false;
 
-  const isElectron =
-    typeof window !== "undefined" && typeof window.electronAPI !== "undefined";
+  const { isElectron } = backendAPI.getBackendInfo();
+  const supportsGlobalInputCapture = isElectron; // Only Electron has working global input capture
 
   const nowSinceStart = () => {
     const start = get(recordingStartTime);
@@ -215,24 +216,24 @@ export function createInputCapture({
   };
 
   const startElectronCapture = () => {
-    if (!isElectron) return;
+    if (!supportsGlobalInputCapture) return;
     if (electronCaptureActive) return;
 
-    window.electronAPI?.startGlobalInputCapture?.();
+    backendAPI.startGlobalInputCapture();
     electronCaptureActive = true;
 
-    if (!unsubscribeElectronEvents && window.electronAPI?.onGlobalInputEvent) {
-      unsubscribeElectronEvents = window.electronAPI.onGlobalInputEvent((event) => {
+    if (!unsubscribeElectronEvents) {
+      unsubscribeElectronEvents = backendAPI.onGlobalInputEvent((event) => {
         appendElectronEvent(event);
       });
     }
   };
 
   const stopElectronCapture = () => {
-    if (!isElectron) return;
+    if (!supportsGlobalInputCapture) return;
     if (!electronCaptureActive) return;
 
-    window.electronAPI?.stopGlobalInputCapture?.();
+    backendAPI.stopGlobalInputCapture();
     electronCaptureActive = false;
     unsubscribeElectronEvents?.();
     unsubscribeElectronEvents = null;
@@ -240,13 +241,13 @@ export function createInputCapture({
 
   const recordingUnsub = isRecording.subscribe(($isRecording) => {
     if ($isRecording) {
-      if (isElectron && window.electronAPI?.startGlobalInputCapture) {
+      if (supportsGlobalInputCapture) {
         startElectronCapture();
       } else {
         addBrowserListeners();
       }
     } else {
-      if (isElectron && window.electronAPI?.stopGlobalInputCapture) {
+      if (supportsGlobalInputCapture) {
         stopElectronCapture();
       }
       removeBrowserListeners();
