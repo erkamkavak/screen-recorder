@@ -9,7 +9,9 @@
     micState,
     mouseCursorStream,
     recordingStartTime,
+    recordingFPS,
     webcamState,
+    activeShare,
     type RecordingAssetType,
     type RecordingAssets,
     type LastRecording,
@@ -19,6 +21,7 @@
   import RecorderSidebar from "./components/RecorderSidebar.svelte";
   import { patchBlob } from "./utils/blobHelpers";
   import { getPreferredMimeType } from "./utils/getPreferredMimeType";
+  import { backendAPI } from "./utils/backendAPI";
 
   type AssetChunk = {
     type: RecordingAssetType;
@@ -35,20 +38,25 @@
 
   let currentAssetRecorders: AssetRecorderState[] = [];
   let recordingFileExtension = "webm";
-  const electronAPI = typeof window !== "undefined" ? window.electronAPI ?? null : null;
+  let nativeRecordingFilePath: string | null = null;
+  const canUseMediaRecorder = typeof MediaRecorder !== "undefined";
 
   const saveAssetToStorage = async (blob: Blob, fileName: string): Promise<string> => {
-    if (electronAPI?.saveRecordingAsset) {
+    try {
       const buffer = await blob.arrayBuffer();
-      return electronAPI.saveRecordingAsset({ fileName, buffer });
+      return await backendAPI.saveRecordingAsset(fileName, buffer);
+    } catch {
+      return URL.createObjectURL(blob);
     }
-    return URL.createObjectURL(blob);
   };
 
-  const cleanupAssetPaths = (paths: string[]) => {
-    if (!paths.length) return Promise.resolve();
-    if (!electronAPI?.cleanupRecordingAssets) return Promise.resolve();
-    return electronAPI.cleanupRecordingAssets(paths);
+  const cleanupAssetPaths = async (paths: string[]) => {
+    if (!paths.length) return;
+    try {
+      await backendAPI.cleanupRecordingAssets(paths);
+    } catch {
+      // Silently fail for browser fallback
+    }
   };
 
   const revokeRecordingAssets = async (recording: LastRecording | null) => {
@@ -85,6 +93,9 @@
     options: MediaRecorderOptions,
     fileName: string
   ): AssetRecorderState | null => {
+    if (!canUseMediaRecorder) {
+      return null;
+    }
     const chunks: Blob[] = [];
     let recorder: MediaRecorder;
 
@@ -123,21 +134,33 @@
     recorders: AssetRecorderState[],
     fileExtension: string
   ) => {
-    if (!recorders.length) return;
-
     const assets: RecordingAssets = {};
 
     try {
-      const assetChunks = await Promise.all(recorders.map(({ promise }) => promise));
-      for (const chunk of assetChunks) {
-        const patchedBlob = await patchBlob(chunk.blob, durationMs);
-        const filePath = await saveAssetToStorage(patchedBlob, chunk.fileName);
-        assets[chunk.type] = {
-          type: chunk.type,
-          fileName: chunk.fileName,
-          filePath,
-          mimeType: patchedBlob.type || chunk.blob.type || "video/webm",
+      // Process MediaRecorder assets (webcam, mouse, audio)
+      if (recorders.length) {
+        const assetChunks = await Promise.all(recorders.map(({ promise }) => promise));
+        for (const chunk of assetChunks) {
+          const patchedBlob = await patchBlob(chunk.blob, durationMs);
+          const filePath = await saveAssetToStorage(patchedBlob, chunk.fileName);
+          assets[chunk.type] = {
+            type: chunk.type,
+            fileName: chunk.fileName,
+            filePath,
+            mimeType: patchedBlob.type || chunk.blob.type || "video/webm",
+          };
+        }
+      }
+
+      // Add native screen recording if available
+      if (nativeRecordingFilePath) {
+        assets.screen = {
+          type: "screen",
+          fileName: "screen.webm",
+          filePath: nativeRecordingFilePath,
+          mimeType: "video/webm",
         };
+        nativeRecordingFilePath = null; // Clear after use
       }
 
       const previousRecording = $lastRecording;
@@ -162,7 +185,7 @@
     }
   };
 
-  const startRecording = () => {
+  const startRecording = async () => {
     const assetsToCapture: {
       type: RecordingAssetType;
       stream: MediaStream;
@@ -173,19 +196,32 @@
     const videoMime = getPreferredMimeType();
     recordingFileExtension = videoMime.ext;
 
+    // Handle screen recording - use native XCap (Electron)
     if ($displayStream?.getTracks().length) {
-      assetsToCapture.push({
-        type: "screen",
-        stream: cloneStream($displayStream),
-        options: {
-          mimeType: videoMime.mimeType,
-          videoBitsPerSecond: 10 * 1000 * 1000,
-        },
-        fileName: `screen.${recordingFileExtension}`,
-      });
+      try {
+        // Get the xcap-compatible source ID from the active share
+        // ShareButton.svelte already converts Electron IDs to xcap format
+        const activeShareData = $activeShare;
+        const targetId = activeShareData?.id || "monitor:0";
+        const captureType = targetId.startsWith("window:") ? "window" : "monitor";
+        
+        // Start native XCap recording for screen (WebM container)
+        // This records WITHOUT the mouse cursor (xcap captures raw screen)
+        nativeRecordingFilePath = await backendAPI.startNativeRecording({
+          targetId,
+          captureType,
+          includeCursor: false,
+          frameRate: $recordingFPS || 30,
+          fileName: `screen.webm`,
+        });
+      } catch (error) {
+        console.error("Failed to start native recording:", error);
+        return;
+      }
     }
 
-    if ($webcamState.stream?.getTracks().length) {
+    // Handle other assets with MediaRecorder (webcam, mouse, audio)
+    if (canUseMediaRecorder && $webcamState.stream?.getTracks().length) {
       assetsToCapture.push({
         type: "webcam",
         stream: cloneStream($webcamState.stream),
@@ -197,7 +233,7 @@
       });
     }
 
-    if ($mouseCursorStream?.getTracks().length) {
+    if (canUseMediaRecorder && $mouseCursorStream?.getTracks().length) {
       assetsToCapture.push({
         type: "mouse",
         stream: cloneStream($mouseCursorStream),
@@ -209,7 +245,7 @@
       });
     }
 
-    if ($micState.stream?.getTracks().length) {
+    if (canUseMediaRecorder && $micState.stream?.getTracks().length) {
       assetsToCapture.push({
         type: "audio",
         stream: cloneStream($micState.stream),
@@ -237,21 +273,87 @@
       }
     });
 
-    if (!recorders.length) {
+    // If we have native recording or MediaRecorder recorders, start recording
+    if (nativeRecordingFilePath || recorders.length) {
+      currentAssetRecorders = recorders;
+      $recordingStartTime = performance.now();
+      $inputEvents = [];
+      $appView = "recorder";
+    } else {
+      // Clean up streams if no recording started
       assetsToCapture.forEach((asset) =>
         asset.stream.getTracks().forEach((track) => track.stop())
       );
-      return;
     }
-
-    currentAssetRecorders = recorders;
-    $recordingStartTime = performance.now();
-    $inputEvents = [];
-    $appView = "recorder";
   };
 
-  const stopRecording = () => {
-    if (!currentAssetRecorders.length) {
+  const stopRecording = async () => {
+    // Stop native recording if active
+    if (nativeRecordingFilePath) {
+      try {
+        await backendAPI.stopNativeRecording();
+        
+        // Fetch frame-synced mouse events from Rust and merge into inputEvents
+        // This replaces uIOhook mouse positions with ones captured at frame time
+        // and adds click events from Rust's rdev listener
+        try {
+          const nativeMouseEvents = await backendAPI.getRecordingMouseEvents();
+          if (nativeMouseEvents?.length) {
+            // Convert to PointerEventRecords with normalized coordinates
+            // Map button states to appropriate event kinds
+            const pointerRecords = nativeMouseEvents.map((e) => {
+              let kind: "pointermove" | "pointerdown" | "pointerup" | "click" = "pointermove";
+              let button = 0;
+              
+              // Map button state to event kind
+              if (e.buttonState === "left_down") {
+                kind = "pointerdown";
+                button = 0;
+              } else if (e.buttonState === "left_up") {
+                kind = "pointerup";
+                button = 0;
+              } else if (e.buttonState === "right_down") {
+                kind = "pointerdown";
+                button = 2;
+              } else if (e.buttonState === "right_up") {
+                kind = "pointerup";
+                button = 2;
+              } else if (e.buttonState === "middle_down") {
+                kind = "pointerdown";
+                button = 1;
+              } else if (e.buttonState === "middle_up") {
+                kind = "pointerup";
+                button = 1;
+              }
+              
+              return {
+                kind,
+                t: e.timestampMs,
+                x: e.normalizedX,
+                y: e.normalizedY,
+                button,
+              };
+            });
+            
+            // Keep key events from uIOhook, replace all pointer events with Rust data
+            const existingEvents = $inputEvents;
+            const keyEvents = existingEvents.filter((e) => 
+              e.kind === "keydown" || e.kind === "keyup"
+            );
+            const mergedEvents = [...keyEvents, ...pointerRecords].sort((a, b) => a.t - b.t);
+            $inputEvents = mergedEvents;
+            
+            await backendAPI.clearRecordingMouseEvents();
+          }
+        } catch (mouseError) {
+          console.warn("Failed to fetch native mouse events:", mouseError);
+        }
+      } catch (error) {
+        console.error("Failed to stop native recording:", error);
+      }
+    }
+    
+    if (!currentAssetRecorders.length && !nativeRecordingFilePath) {
       $recordingStartTime = null;
       return;
     }
@@ -275,6 +377,8 @@
     if ($isRecording) stopRecording();
     else startRecording();
   };
+
+  // Cleanup on component destroy
 </script>
 
 <div
