@@ -47,6 +47,8 @@
   export let sortedClickEvents: PointerEventRecord[] = [];
   export let videoDuration = 0;
   export let videoCurrentTime = 0;
+  export let screenWidth = 0;
+  export let screenHeight = 0;
   export let isRenderingVideo = false;
   export let renderProgress = 0;
   export let playerFrameEl: HTMLDivElement | null = null;
@@ -85,6 +87,8 @@
             frameRate={recordingFPS}
             bind:duration={videoDuration}
             bind:currentTime={videoCurrentTime}
+            bind:screenWidth={screenWidth}
+            bind:screenHeight={screenHeight}
           />
           <div class="pointer-indicator" style={pointerStyle} />
         </div>
@@ -132,7 +136,7 @@
       <dl class="stats">
         <div>
           <dt>Duration</dt>
-          <dd>{humanDuration(Math.round(lastRecording.duration / 1000))}</dd>
+          <dd>{humanDuration(Math.round(videoDuration))}</dd>
         </div>
       </dl>
     </aside>

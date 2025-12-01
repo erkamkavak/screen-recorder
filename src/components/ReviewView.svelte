@@ -1,7 +1,6 @@
 <script lang="ts">
   import {
     activeBackground,
-    activeShare,
     activeTheme,
     appView,
     canvasDimensions,
@@ -17,6 +16,7 @@
   import cursorPackPointer from "../assets/cursors/cutecore-pink-pointer.png?url";
   import { timelineStore } from "../stores/timeline";
   import { onDestroy, onMount } from "svelte";
+  import { backendAPI } from "../utils/backendAPI";
   import {
     renderCompositeRecording,
     type RenderCompositeOptions,
@@ -72,6 +72,8 @@
   let pointerStyle = "opacity: 0;";
   let recordingDurationSeconds = 0;
   let timelineDuration = 0;
+  let recordedScreenWidth = 0;
+  let recordedScreenHeight = 0;
   
   let currentSnapshot = timelineStore.snapshot();
   // Reactive snapshot so zoom/trim changes reflect in composited preview
@@ -136,7 +138,7 @@
   $: pointerState = computePointerState(videoCurrentTime, pointerRecords);
 
   $: recordingDurationSeconds = $lastRecording ? Math.max(0, $lastRecording.duration / 1000) : 0;
-  $: timelineDuration = Math.max(recordingDurationSeconds, videoDuration);
+  $: timelineDuration = videoDuration;
 
   const clamp = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value));
@@ -463,9 +465,14 @@
     pointerIconSelection = selection;
   };
 
+  // Create a fake share object with recorded screen dimensions for placement calculation
+  $: recordedShare = recordedScreenWidth > 0 && recordedScreenHeight > 0
+    ? { id: "recorded", width: recordedScreenWidth, height: recordedScreenHeight, preview: {} as HTMLVideoElement }
+    : null;
+  
   $: screenPlacement = calculateScreenPlacement(
     $canvasDimensions,
-    $activeShare,
+    recordedShare,
     $screenLayoutState,
     $generalLayoutState
   );
@@ -589,10 +596,10 @@
 
       if (result.type === "file") {
         cleanupPath = result.filePath;
-        const savedPath = await window.electronAPI?.saveRenderedFile?.({
-          filePath: result.filePath,
-          fileName: `edited-${$lastRecording.fileName}`,
-        });
+        const savedPath = await backendAPI.saveRenderedFile(
+          result.filePath,
+          `edited-${$lastRecording.fileName}`
+        );
         if (!savedPath) {
           console.warn("Rendered file save cancelled");
           return;
@@ -616,7 +623,7 @@
       isRenderingVideo = false;
       renderProgress = 0;
       if (cleanupPath) {
-        window.electronAPI?.cleanupRecordingAssets?.([cleanupPath]);
+        await backendAPI.cleanupRecordingAssets([cleanupPath]);
       }
     }
   };
@@ -651,6 +658,8 @@
   {sortedClickEvents}
   bind:videoDuration={videoDuration}
   bind:videoCurrentTime={videoCurrentTime}
+  bind:screenWidth={recordedScreenWidth}
+  bind:screenHeight={recordedScreenHeight}
   {isRenderingVideo}
   {renderProgress}
   {downloadEditedVideo}
