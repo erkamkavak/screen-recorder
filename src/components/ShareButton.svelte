@@ -1,17 +1,19 @@
 <script lang="ts">
   import ActionButton from "./ui/ActionButton.svelte";
   import type { Share } from "../stores";
-  import { screenShareState } from "../stores.js";
+  import { recordingFPS, screenShareState, isRecording } from "../stores";
   import { onMount } from "svelte";
   import LoadingDots from "./icons/loadingDots.icon.svelte";
   import CloseIcon from "./icons/close.icon.svelte";
   import clsx from "clsx";
   import { clickOutside } from "../directives/clickOutside";
+  import { backendAPI } from "../utils/backendAPI";
 
   type DesktopSourceSummary = {
     id: string;
     name: string;
     thumbnail: string | null;
+    type: "screen" | "window";
   };
 
   export let share: Share;
@@ -19,7 +21,8 @@
   let preview: HTMLVideoElement;
   let isActive: boolean = false;
 
-  const isElectron = typeof window !== "undefined" && "electronAPI" in window;
+  const { isElectron } = backendAPI.getBackendInfo();
+  const supportsNativeCapture = isElectron;
 
   let isPickerVisible = false;
   let isLoadingSources = false;
@@ -27,17 +30,183 @@
   let desktopSources: DesktopSourceSummary[] = [];
   let pickerError: string | null = null;
 
-  const refreshDesktopSources = async () => {
-    if (!isElectron || typeof window.electronAPI?.listDesktopSources !== "function") return;
+  const nativePixelFormat = {
+    bgra8: 0,
+    rgba8: 1,
+  };
 
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const buildNativeCaptureTarget = (source: DesktopSourceSummary): NativeCaptureTarget => {
+    // For XCap, we pass the source ID directly - backendAPI handles the conversion
+    if (source.type === "window") {
+      return { type: "window", id: source.id };
+    } else {
+      return { type: "screen", id: source.id };
+    }
+  };
+
+  const convertNativeFrameToPixels = (
+    frame: NativeCaptureFrame,
+    width: number,
+    height: number
+  ): Uint8ClampedArray | null => {
+    // Handle both XCap format (pixels) and native_capture format (buffer)
+    const buffer = new Uint8ClampedArray(frame.buffer || frame.pixels);
+    const expectedLength = width * height * 4;
+    if (buffer.length < expectedLength) {
+      return null;
+    }
+    
+    // XCap returns RGBA format, native_capture may return BGRA or RGBA
+    // Check if format field exists, otherwise assume RGBA (XCap)
+    const isRGBA = !frame.format || frame.format === nativePixelFormat.rgba8;
+    
+    if (isRGBA) {
+      return buffer.length === expectedLength ? buffer : buffer.subarray(0, expectedLength);
+    }
+    
+    // Handle BGRA format (native_capture)
+    if (frame.format === nativePixelFormat.bgra8) {
+      const pixels = new Uint8ClampedArray(expectedLength);
+      for (let i = 0; i < expectedLength; i += 4) {
+        pixels[i] = buffer[i + 2];
+        pixels[i + 1] = buffer[i + 1];
+        pixels[i + 2] = buffer[i];
+        pixels[i + 3] = buffer[i + 3];
+      }
+      return pixels;
+    }
+    return null;
+  };
+
+  const createNativeCaptureStream = async ({
+    target,
+    includeCursor,
+    frameRate,
+  }: {
+    target: NativeCaptureTarget;
+    includeCursor: boolean;
+    frameRate: number;
+  }) => {
+    const started = await backendAPI.startNativeCapture({
+      target,
+      includeCursor,
+      frameRate,
+    });
+    if (!started) {
+      throw new Error("Failed to start native capture.");
+    }
+
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+    if (!context) {
+      backendAPI.stopNativeCapture();
+      throw new Error("Unable to initialize capture context.");
+    }
+
+    const stream = canvas.captureStream(frameRate || 30);
+    let running = true;
+    let imageData: ImageData | null = null;
+
+    const stopCapture = () => {
+      running = false;
+      stream.getTracks().forEach((track) => track.stop());
+      backendAPI.stopNativeCapture();
+    };
+
+    const renderFrame = (frame: NativeCaptureFrame) => {
+      if (frame.width === 0 || frame.height === 0) {
+        return false;
+      }
+      if (
+        !imageData ||
+        imageData.width !== frame.width ||
+        imageData.height !== frame.height
+      ) {
+        canvas.width = frame.width;
+        canvas.height = frame.height;
+        imageData = context.createImageData(frame.width, frame.height);
+      }
+
+      const pixels = convertNativeFrameToPixels(frame, frame.width, frame.height);
+      if (!pixels || !imageData) {
+        return false;
+      }
+      imageData.data.set(pixels);
+      context.putImageData(imageData, 0, 0);
+      return true;
+    };
+
+    const waitForInitialFrame = async () => {
+      const deadline = performance.now() + 5000;
+      while (running) {
+        const frame = (await backendAPI.pollNativeFrame()) as NativeCaptureFrame | null;
+        if (!running) {
+          break;
+        }
+        if (!frame) {
+          if (performance.now() >= deadline) {
+            throw new Error("Timed out waiting for native capture frames");
+          }
+          await sleep(16);
+          continue;
+        }
+        if (renderFrame(frame)) {
+          return;
+        }
+        if (performance.now() >= deadline) {
+          throw new Error("Timed out waiting for native capture frames");
+        }
+      }
+      throw new Error("Native capture interrupted before first frame");
+    };
+
+    const pollFrames = async () => {
+      while (running) {
+        const frame = (await backendAPI.pollNativeFrame()) as NativeCaptureFrame | null;
+        if (!running) break;
+        if (!frame) {
+          await sleep(16);
+          continue;
+        }
+        // console.log("Received frame");
+        renderFrame(frame);
+      }
+    };
+
+    try {
+      await waitForInitialFrame();
+    } catch (error) {
+      stopCapture();
+      throw error;
+    }
+
+    pollFrames().catch((error) => {
+      console.error("Native capture frame loop failed", error);
+      stopCapture();
+    });
+
+    return { stream, stop: stopCapture };
+  };
+
+  const refreshDesktopSources = async () => {
+    if (!supportsNativeCapture) {
+      pickerError = "Native capture is not supported in this environment.";
+      return;
+    }
     isLoadingSources = true;
     pickerError = null;
 
     try {
-      desktopSources = await window.electronAPI.listDesktopSources({
+      const sources = await backendAPI.listDesktopSources({
         types: ["screen", "window"],
         thumbnailSize: { width: 480, height: 270 },
       });
+      desktopSources = sources.map((source) => ({
+        ...source,
+        type: source.type ?? (source.id?.startsWith("screen:") ? "screen" : "window"),
+      }));
       if (!desktopSources.length) {
         pickerError = "No capture sources found.";
       }
@@ -50,42 +219,60 @@
     }
   };
 
-  const startStreamFromSource = async (sourceId: string) => {
-    if (!isElectron || typeof window.electronAPI?.getDesktopSourceId !== "function") return;
+  const convertElectronSourceIdToXcap = (electronId: string, sourceType: "screen" | "window"): string => {
+    // Electron uses "screen:0:0" or "window:12345:0" format
+    // XCap expects "monitor:0" or "window:12345"
+    if (sourceType === "screen") {
+      // Extract screen index from "screen:X:Y" -> "monitor:X"
+      const parts = electronId.split(":");
+      const screenIndex = parts[1] || "0";
+      return `monitor:${screenIndex}`;
+    } else {
+      // For windows, extract window ID from "window:ID:Y" -> "window:ID"
+      const parts = electronId.split(":");
+      const windowId = parts[1] || "0";
+      return `window:${windowId}`;
+    }
+  };
+
+  const startNativeCapture = async (source: DesktopSourceSummary) => {
+    if (!supportsNativeCapture) {
+      throw new Error("Native capture is not supported in this environment.");
+    }
+    
+    // Native sources from xcap already use the correct format (monitor:X, window:X)
+    // Only convert if it's an old Electron format (screen:X:Y)
+    if (source.id.startsWith("screen:") && source.id.split(":").length > 2) {
+      share.id = convertElectronSourceIdToXcap(source.id, source.type);
+    } else {
+      share.id = source.id;
+    }
+    
+    const target = buildNativeCaptureTarget(source);
+
+    console.log("Starting native capture with target:", target);
+    const { stream, stop } = await createNativeCaptureStream({
+      target,
+      includeCursor: false,
+      frameRate: $recordingFPS || 30,
+    });
+
+    console.log("Native capture stream started:", stream);
+    console.log("Native capture stop function:", stop);
+    share.stopNativeCapture = stop;
+    share.stream = stream;
+  };
+
+  const startStreamFromSource = async (source: DesktopSourceSummary) => {
+    share.stopNativeCapture?.();
+    share.stopNativeCapture = undefined;
 
     try {
       isCapturing = true;
-      const resolvedSourceId = await window.electronAPI.getDesktopSourceId({
-        preferredId: sourceId,
-      });
-      if (!resolvedSourceId) {
-        throw new Error("Selected source is no longer available.");
-      }
-
-      const videoConstraints: any = {
-        mandatory: {
-          chromeMediaSource: "desktop",
-          chromeMediaSourceId: resolvedSourceId,
-          cursor: "never",
-        },
-        optional: [{ cursor: "never" }],
-      };
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: videoConstraints,
-      });
-      const cursorTrack = stream.getVideoTracks()[0];
-      if (cursorTrack?.applyConstraints) {
-        try {
-          await cursorTrack.applyConstraints({ advanced: [{ cursor: "never" }] } as any);
-        } catch {
-          // ignore unsupported constraints
-        }
-      }
-
-      share.stream = stream;
+      await startNativeCapture(source);
       share.preview.srcObject = share.stream;
+      // Trigger Svelte reactivity by updating the store
+      $screenShareState.shares = $screenShareState.shares;
       grabDimensions();
       makeActive();
       isPickerVisible = false;
@@ -97,39 +284,26 @@
     }
   };
 
-  const startBrowserCapture = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: "never" } as any,
-      });
-      share.stream = stream;
-      share.preview.srcObject = share.stream;
-      grabDimensions();
-      makeActive();
-    } catch (error) {
-      console.error("Failed to start screen capture", error);
+  const cancelSelection = () => {
+    // Only remove if no stream has been started yet
+    if (!share.stream) {
       removeShare(index);
+    } else {
+      // Just close the picker if we already have a stream
+      isPickerVisible = false;
     }
   };
 
-  const cancelSelection = () => {
-    removeShare(index);
-  };
-
-  const selectSource = async (sourceId: string) => {
-    await startStreamFromSource(sourceId);
+  const selectSource = async (source: DesktopSourceSummary) => {
+    await startStreamFromSource(source);
     if (share.stream) {
       pickerError = null;
     }
   };
 
   onMount(async () => {
-    if (isElectron) {
-      isPickerVisible = true;
-      await refreshDesktopSources();
-    } else {
-      await startBrowserCapture();
-    }
+    isPickerVisible = true;
+    await refreshDesktopSources();
   });
 
   const removeShare = async (removingItemIndex) => {
@@ -171,6 +345,7 @@
 
   const stopSharing = (event, index) => {
     if ($screenShareState.shares[index]) {
+      $screenShareState.shares[index].stopNativeCapture?.();
       $screenShareState.shares[index].stream
         .getTracks()
         .forEach((track) => track.stop());
@@ -195,8 +370,13 @@
   };
 
   $: {
-    if (preview && $screenShareState.shares[index]) {
+    // Set the preview video srcObject when stream is available
+    if (preview && $screenShareState.shares[index]?.stream) {
       preview.srcObject = $screenShareState.shares[index].stream;
+    }
+    // Also handle the case where share.stream is set directly
+    if (preview && share.stream && !preview.srcObject) {
+      preview.srcObject = share.stream;
     }
     isActive = $screenShareState.activeIndex === index;
   }
@@ -212,7 +392,7 @@
       muted
       on:resize={grabDimensions}
     />
-    {#if isElectron && isPickerVisible}
+    {#if isPickerVisible}
       <div
         class="absolute bottom-full left-1/2 z-40 -translate-x-1/2 mb-3"
         use:clickOutside
@@ -259,7 +439,7 @@
               {#each desktopSources as source (source.id)}
                 <button
                   class="flex flex-col items-center gap-3 p-4 rounded-xl border border-transparent hover:border-fmd-red transition bg-white/90 dark:bg-fmd-navy/70 hover:bg-fmd-red/5 dark:hover:bg-fmd-blue/20"
-                  on:click={() => selectSource(source.id)}
+                  on:click={() => selectSource(source)}
                 >
                   {#if source.thumbnail}
                     <img src={source.thumbnail} alt={source.name} class="w-32 h-20 object-cover rounded-lg shadow-md" />

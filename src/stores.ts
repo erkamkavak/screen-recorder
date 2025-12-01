@@ -116,6 +116,7 @@ export type Share = {
   preview?: HTMLVideoElement;
   width: number;
   height: number;
+  stopNativeCapture?: () => void;
 };
 
 export type ScreenShareState = {
