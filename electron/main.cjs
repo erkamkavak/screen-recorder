@@ -15,12 +15,21 @@ const { Blob } = require("buffer");
 const fixWebmDuration = require("fix-webm-duration");
 const { uIOhook } = require("uiohook-napi");
 
-const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
-const isDev = Boolean(VITE_DEV_SERVER_URL);
+// Native Rust addon for screen recording (xcap-based)
+let nativeAddon = null;
+try {
+  nativeAddon = require("../native");
+} catch (error) {
+  console.warn("Native addon not available, falling back to MediaRecorder:", error.message);
+}
 
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("enable-features", "WebRTCPipeWireCapturer");
+  app.commandLine.appendSwitch("no-sandbox");
 }
+
+const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
+const isDev = Boolean(VITE_DEV_SERVER_URL);
 
 /**
  * Create the main browser window for the renderer.
@@ -38,11 +47,12 @@ function createWindow() {
     },
   });
 
+
   if (isDev && VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(VITE_DEV_SERVER_URL);
     mainWindow.webContents.once("did-frame-finish-load", () => {
-      mainWindow.show();
       mainWindow.webContents.openDevTools({ mode: "detach" });
+      mainWindow.show();
     });
   } else {
     mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
@@ -364,6 +374,7 @@ app.whenReady().then(() => {
       id: source.id,
       name: source.name,
       thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : null,
+      type: source.id?.startsWith("screen:") ? "screen" : "window",
     }));
   });
 
@@ -384,6 +395,172 @@ app.whenReady().then(() => {
     const windowSource = sources.find((source) => source.id.startsWith("window:"));
     const pickedSource = screenSource || windowSource || sources[0];
     return pickedSource ? pickedSource.id : null;
+  });
+
+  // Native recording handlers (using Rust xcap addon)
+  ipcMain.handle("native-recording:list-sources", async () => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      const sources = nativeAddon.listSources();
+      return sources.map(source => ({
+        id: source.id,
+        name: source.name,
+        thumbnail: source.thumbnail,
+        type: source.sourceType === "screen" ? "screen" : "window",
+      }));
+    } catch (error) {
+      console.error("Failed to list native sources:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-recording:start-capture", async (_event, options) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      nativeAddon.startCapture({
+        targetId: options.targetId || "monitor:0",
+        captureType: options.captureType || "monitor",
+        includeCursor: Boolean(options.includeCursor),
+        frameRate: options.frameRate || 30,
+      });
+      return true;
+    } catch (error) {
+      console.error("Failed to start native capture:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-recording:stop-capture", async () => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      nativeAddon.stopCapture();
+      return true;
+    } catch (error) {
+      console.error("Failed to stop native capture:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-recording:is-running", async () => {
+    if (!nativeAddon) {
+      return false;
+    }
+    return nativeAddon.isCaptureRunning();
+  });
+
+  ipcMain.handle("native-recording:poll-frame", async () => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      const frame = await nativeAddon.pollFrame();
+      if (!frame) return null;
+      return {
+        width: frame.width,
+        height: frame.height,
+        timestampMs: frame.timestampMs,
+        buffer: frame.buffer,
+      };
+    } catch (error) {
+      console.error("Failed to poll frame:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-recording:start", async (_event, options) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      const filePath = nativeAddon.startRecording({
+        targetId: options.targetId || "monitor:0",
+        captureType: options.captureType || "monitor",
+        includeCursor: Boolean(options.includeCursor),
+        frameRate: options.frameRate || 30,
+        fileName: options.fileName,
+      });
+      return filePath;
+    } catch (error) {
+      console.error("Failed to start native recording:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-recording:stop", async () => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      const filePath = nativeAddon.stopRecording();
+      return filePath;
+    } catch (error) {
+      console.error("Failed to stop native recording:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-recording:screenshot", async (_event, options) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      const dataUrl = nativeAddon.takeScreenshot(
+        options.targetId || "monitor:0",
+        options.captureType || "monitor"
+      );
+      return dataUrl;
+    } catch (error) {
+      console.error("Failed to take screenshot:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-recording:available", async () => {
+    return nativeAddon !== null;
+  });
+
+  // Native mouse position APIs (from Rust, synced with screen capture)
+  ipcMain.handle("native-recording:get-mouse-events", async () => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.getRecordingMouseEvents();
+    } catch (error) {
+      console.error("Failed to get mouse events:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-recording:clear-mouse-events", async () => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      nativeAddon.clearRecordingMouseEvents();
+      return true;
+    } catch (error) {
+      console.error("Failed to clear mouse events:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-recording:get-current-mouse", async () => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.getCurrentMousePosition();
+    } catch (error) {
+      console.error("Failed to get current mouse position:", error);
+      throw error;
+    }
   });
 
   createWindow();
