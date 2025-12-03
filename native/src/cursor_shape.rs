@@ -113,7 +113,7 @@ mod linux {
         // Only log when cursor identifier changes to reduce spam
         if let Ok(mut last_hash) = LAST_CURSOR_HASH.lock() {
             if *last_hash != cursor_hash {
-                eprintln!("Cursor changed to: {} (cursor name: {:?})", normalized, cursor_name.as_deref());
+                // eprintln!("Cursor changed to: {} (cursor name: {:?})", normalized, cursor_name.as_deref());
                 *last_hash = cursor_hash;
             }
         }
