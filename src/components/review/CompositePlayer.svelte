@@ -379,8 +379,10 @@
 
   $: (async () => { await updateAudio(); })();
 
-  // Redraw once when toggles change and we're paused
-  $: if (!playing) { drawFrame(); }
+  // Redraw once when toggles change and we're paused. Include pointer size so the paused view updates immediately.
+  $: if (!playing && pointerIndicatorSize !== undefined) {
+    drawFrame();
+  }
 
   const pause = () => {
     playing = false;
