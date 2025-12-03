@@ -14,6 +14,8 @@
   export let onPointerIconSelect: (selection: string) => void = () => {};
   export let onZipPointerFileChange: (event: Event) => void = () => {};
 
+  let pointerZipLabel = "No file selected";
+
   const handlePointerSizeInput = (event: CustomEvent<number>) => {
     onPointerSizeChange?.(event.detail);
   };
@@ -23,6 +25,9 @@
   };
 
   const handleZipPointerFileInput = (event: Event) => {
+    const target = event.currentTarget as HTMLInputElement;
+    const fileName = target.files?.[0]?.name;
+    pointerZipLabel = fileName ?? "No file selected";
     onZipPointerFileChange?.(event);
   };
 </script>
@@ -58,8 +63,25 @@
     {/each}
   </div>
   <div class="pointer-zip-import">
-    <span class="pointer-import-label">Import cursor pack (.zip)</span>
-    <input type="file" accept=".zip" on:change={handleZipPointerFileInput} />
+    <label class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+      Import cursor pack (.zip)
+    </label>
+    <div class="flex flex-wrap items-center gap-3">
+      <label
+        class="group inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-white dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-200"
+      >
+        <span>Choose file</span>
+        <input
+          type="file"
+          accept=".zip"
+          class="sr-only"
+          on:change={handleZipPointerFileInput}
+        />
+      </label>
+      <p class="text-sm text-slate-500 dark:text-slate-400">
+        {pointerZipLabel}
+      </p>
+    </div>
     {#if zipPointerImportMessage}
       <p class="pointer-zip-message">{zipPointerImportMessage}</p>
     {/if}
@@ -126,21 +148,7 @@
   .pointer-zip-import {
     display: flex;
     flex-direction: column;
-    gap: 0.25rem;
-  }
-
-  .pointer-zip-import .pointer-import-label {
-    font-size: 0.85rem;
-    color: #475569;
-  }
-
-  .pointer-zip-import input {
-    border-radius: 0.75rem;
-    border: 1px solid #e5e7eb;
-    padding: 0.35rem 0.8rem;
-    font-size: 0.85rem;
-    background: #fff;
-    cursor: pointer;
+    gap: 0.5rem;
   }
 
   .pointer-zip-message {
