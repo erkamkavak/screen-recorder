@@ -1,7 +1,11 @@
 <script lang="ts">
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, getContext, onDestroy } from "svelte";
   import { fade } from "svelte/transition";
   import { clickOutside } from "../../directives/clickOutside";
+  import {
+    sidebarSectionDropdownKey,
+    type SidebarSectionDropdownContext,
+  } from "../../utils/sidebarSectionDropdownContext";
 
   export let name: string;
   export let title: string;
@@ -9,12 +13,35 @@
     title: string;
     value: unknown;
     description?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    accentColor?: string;
   }> = [];
   export let value: unknown;
   export let placeholder = "Select";
   export let isDisabled = false;
 
   const dispatch = createEventDispatcher<{ select: { value: unknown } }>();
+  const dropdownSectionContext = getContext<SidebarSectionDropdownContext | undefined>(
+    sidebarSectionDropdownKey
+  );
+  let hasReportedOpenToSection = false;
+
+  $: if (dropdownSectionContext) {
+    if (isOpen && !hasReportedOpenToSection) {
+      dropdownSectionContext.register();
+      hasReportedOpenToSection = true;
+    } else if (!isOpen && hasReportedOpenToSection) {
+      dropdownSectionContext.unregister();
+      hasReportedOpenToSection = false;
+    }
+  }
+
+  onDestroy(() => {
+    if (dropdownSectionContext && hasReportedOpenToSection) {
+      dropdownSectionContext.unregister();
+    }
+  });
 
   let isOpen = false;
   let dropdownButton: HTMLButtonElement;
@@ -35,6 +62,9 @@
     title: string;
     value: unknown;
     description?: string;
+    primaryColor?: string;
+    secondaryColor?: string;
+    accentColor?: string;
   }) => {
     value = option.value;
     dispatch("select", { value });
@@ -56,7 +86,7 @@
   >
     {title}
   </label>
-  <div class="relative">
+  <div class="relative" use:clickOutside on:outclick={close}>
     <button
       bind:this={dropdownButton}
       type="button"
@@ -67,7 +97,17 @@
       aria-haspopup="listbox"
       aria-expanded={isOpen}
     >
-      <span>{selectedOption ? selectedOption.title : placeholder}</span>
+      <span class="flex items-center gap-2">
+        {#if selectedOption && (selectedOption.primaryColor || selectedOption.secondaryColor || selectedOption.accentColor)}
+          <span
+            class="h-4 w-4 rounded-md border border-slate-200/80 shadow-sm dark:border-slate-700/70"
+            style={`background: ${selectedOption.primaryColor && selectedOption.secondaryColor
+              ? `linear-gradient(135deg, ${selectedOption.primaryColor}, ${selectedOption.secondaryColor})`
+              : selectedOption.primaryColor || selectedOption.secondaryColor || selectedOption.accentColor || "transparent"};`}
+          />
+        {/if}
+        <span>{selectedOption ? selectedOption.title : placeholder}</span>
+      </span>
       <svg
         class="h-4 w-4 text-slate-400"
         viewBox="0 0 20 20"
@@ -86,12 +126,10 @@
 
     {#if isOpen}
       <div
-        class="absolute z-40 mt-2 w-full overflow-hidden rounded-xl border border-slate-200/80 bg-white/95 shadow-2xl backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-900/95"
+        class="absolute z-[9999] mt-2 w-full overflow-hidden rounded-xl border border-slate-200/80 bg-white/95 shadow-2xl backdrop-blur-md dark:border-slate-700/70 dark:bg-slate-900/95"
         role="listbox"
         tabindex="-1"
         transition:fade={{ duration: 120 }}
-        use:clickOutside
-        on:outclick={close}
         on:keydown={handleKeydown}
       >
         <ul class="max-h-56 overflow-y-auto py-2 text-sm text-slate-600 dark:text-slate-200">
@@ -99,14 +137,24 @@
             <li>
               <button
                 type="button"
-                class="flex w-full flex-col gap-0.5 px-3 py-2 text-left transition hover:bg-slate-100/80 hover:text-slate-900 dark:hover:bg-slate-800/70 dark:hover:text-slate-50"
+                class="flex w-full items-center gap-2 px-3 py-2 text-left transition hover:bg-slate-100/80 hover:text-slate-900 dark:hover:bg-slate-800/70 dark:hover:text-slate-50"
                 class:selected={option.value === value}
                 on:click={() => selectOption(option)}
               >
-                <span class="font-medium">{option.title}</span>
-                {#if option.description}
-                  <span class="text-xs text-slate-400 dark:text-slate-500">{option.description}</span>
+                {#if option.primaryColor || option.secondaryColor || option.accentColor}
+                  <span
+                    class="h-5 w-5 flex-shrink-0 rounded-md border border-slate-200/80 shadow-sm dark:border-slate-700/70"
+                    style={`background: ${option.primaryColor && option.secondaryColor
+                      ? `linear-gradient(135deg, ${option.primaryColor}, ${option.secondaryColor})`
+                      : option.primaryColor || option.secondaryColor || option.accentColor || "transparent"};`}
+                  />
                 {/if}
+                <span class="flex min-w-0 flex-col gap-0.5">
+                  <span class="truncate font-medium">{option.title}</span>
+                  {#if option.description}
+                    <span class="truncate text-xs text-slate-400 dark:text-slate-500">{option.description}</span>
+                  {/if}
+                </span>
               </button>
             </li>
           {/each}
