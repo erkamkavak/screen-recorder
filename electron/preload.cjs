@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   appendRenderChunk: (payload) => ipcRenderer.invoke("rendering:append", payload),
   patchRenderFile: (payload) => ipcRenderer.invoke("rendering:patch", payload),
   cancelRenderStream: (filePath) => ipcRenderer.invoke("rendering:cancel", filePath),
+  closeRenderStream: (filePath) => ipcRenderer.invoke("rendering:close", filePath),
   
   // Native recording APIs (Rust xcap-based)
   isNativeRecordingAvailable: () => ipcRenderer.invoke("native-recording:available"),

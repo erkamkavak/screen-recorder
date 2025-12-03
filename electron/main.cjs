@@ -210,12 +210,19 @@ app.whenReady().then(() => {
     }
   });
 
-  const patchWebmDuration = async (filePath, durationMs) => {
+  const closeRenderDescriptor = async (filePath) => {
     const fd = renderFileDescriptors.get(filePath);
     if (fd) {
-      await fd.close();
+      try {
+        await fd.close();
+      } catch (error) {
+        console.warn("Failed to close render descriptor", error);
+      }
       renderFileDescriptors.delete(filePath);
     }
+  };
+
+  const patchWebmDuration = async (filePath, durationMs) => {
     
     const stats = await fs.promises.stat(filePath);
     const fileSize = stats.size;
@@ -254,23 +261,27 @@ app.whenReady().then(() => {
     }
   };
 
-  ipcMain.handle("rendering:patch", async (_event, { filePath, durationMs }) => {
-    if (!filePath) return false;
-    
-    try {
-      await patchWebmDuration(filePath, durationMs);
-      return true;
-    } catch (error) {
-      console.error('Duration patching failed:', error);
-      const fd = renderFileDescriptors.get(filePath);
-      if (fd) {
-        try {
-          await fd.close();
-        } catch {}
-        renderFileDescriptors.delete(filePath);
+  ipcMain.handle(
+    "rendering:patch",
+    async (_event, { filePath, durationMs, skipPatch = false }) => {
+      if (!filePath) return false;
+      if (skipPatch) {
+        return true;
       }
-      return false;
+      try {
+        await patchWebmDuration(filePath, durationMs);
+        return true;
+      } catch (error) {
+        console.error("Duration patching failed:", error);
+        return false;
+      }
     }
+  );
+
+  ipcMain.handle("rendering:close", async (_event, filePath) => {
+    if (!filePath) return false;
+    await closeRenderDescriptor(filePath);
+    return true;
   });
 
   ipcMain.handle("rendering:cancel", async (_event, filePath) => {

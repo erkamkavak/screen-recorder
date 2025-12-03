@@ -71,8 +71,9 @@ declare global {
     // Rendering
     startRenderStream?: (fileName: string) => Promise<string>;
     appendRenderChunk?: (payload: { filePath: string; buffer: ArrayBuffer }) => Promise<void>;
-    patchRenderFile?: (payload: { filePath: string; durationMs: number }) => Promise<boolean>;
+    patchRenderFile?: (payload: { filePath: string; durationMs: number; skipPatch?: boolean }) => Promise<boolean>;
     cancelRenderStream?: (filePath: string) => Promise<boolean>;
+    closeRenderStream?: (filePath: string) => Promise<boolean>;
     saveRenderedFile?: (payload: { filePath: string; fileName: string }) => Promise<string | null>;
     
     // Native capture (streaming frames)

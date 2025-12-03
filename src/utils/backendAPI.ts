@@ -137,12 +137,24 @@ export const appendRenderChunk = async (filePath: string, buffer: ArrayBuffer): 
   throw new Error("Render streaming not available outside Electron");
 };
 
-export const patchRenderFile = async (filePath: string, durationMs: number): Promise<boolean> => {
+export const patchRenderFile = async (params: {
+  filePath: string;
+  durationMs: number;
+  skipPatch?: boolean;
+}): Promise<boolean> => {
   if (isElectron) {
-    return await window.electronAPI.patchRenderFile({ filePath, durationMs });
+    return await window.electronAPI.patchRenderFile(params);
   }
 
   throw new Error("Render patching not available outside Electron");
+};
+
+export const closeRenderStream = async (filePath: string): Promise<boolean> => {
+  if (isElectron) {
+    return await window.electronAPI.closeRenderStream(filePath);
+  }
+
+  throw new Error("Render close not available outside Electron");
 };
 
 export const cancelRenderStream = async (filePath: string): Promise<boolean> => {
@@ -380,6 +392,7 @@ export const backendAPI = {
   startRenderStream,
   appendRenderChunk,
   patchRenderFile,
+  closeRenderStream,
   cancelRenderStream,
 
   // Utilities
