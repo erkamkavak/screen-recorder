@@ -40,6 +40,9 @@
 
   let pointerIconImage: HTMLImageElement | null = null;
   let pointerPressedIconImage: HTMLImageElement | null = null;
+  let pointerIconImageToken = 0;
+  let pointerPressIconImageToken = 0;
+
   export let duration: number = 0;
   export let currentTime: number = 0;
   export let screenWidth: number = 0;
@@ -60,6 +63,38 @@
   let drawArgs: DrawArgs | null = null;
   let animationId: number;
   let playing = false;
+
+  $: if (pointerIconUrl) {
+    const currentToken = ++pointerIconImageToken;
+    loadImage(pointerIconUrl)
+      .then((img) => {
+        if (currentToken !== pointerIconImageToken) return;
+        pointerIconImage = img;
+      })
+      .catch(() => {
+        if (currentToken !== pointerIconImageToken) return;
+        pointerIconImage = null;
+      });
+  } else {
+    pointerIconImageToken += 1;
+    pointerIconImage = null;
+  }
+
+  $: if (pointerIconPressedUrl) {
+    const currentToken = ++pointerPressIconImageToken;
+    loadImage(pointerIconPressedUrl)
+      .then((img) => {
+        if (currentToken !== pointerPressIconImageToken) return;
+        pointerPressedIconImage = img;
+      })
+      .catch(() => {
+        if (currentToken !== pointerPressIconImageToken) return;
+        pointerPressedIconImage = null;
+      });
+  } else {
+    pointerPressIconImageToken += 1;
+    pointerPressedIconImage = null;
+  }  
 
   const waitForMetadata = (media: HTMLMediaElement, timeoutMs = 5000) =>
     new Promise<void>((resolve) => {
