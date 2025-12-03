@@ -20,11 +20,17 @@
       title: theme.title,
       value: theme,
       description: `${theme.primary} → ${theme.secondary}`,
+      primaryColor: theme.primary,
+      secondaryColor: theme.secondary,
+      accentColor: theme.accent,
     })),
     {
       title: "Custom Theme",
       value: $customTheme,
       description: "Create your own palette",
+      primaryColor: $customTheme.primary,
+      secondaryColor: $customTheme.secondary,
+      accentColor: $customTheme.accent,
     },
   ];
 
@@ -49,6 +55,7 @@
     backgrounds.find((bg) => bg.category !== "Image") ?? backgrounds[0];
 
   let imageInput: HTMLInputElement | null = null;
+  $: backgroundImageLabel = $customBackgroundImage?.name ?? "No file selected";
 
   const handleBackgroundImageUpload = (event: Event) => {
     const target = event.currentTarget as HTMLInputElement;
@@ -187,16 +194,31 @@
 
 <SidebarSection title="Background image">
   <div class="grid gap-3">
-    <label class="text-sm font-semibold text-slate-700 dark:text-slate-200">
-      Upload image
-    </label>
-    <input
-      type="file"
-      accept="image/*"
-      bind:this={imageInput}
-      class="text-sm text-slate-600 dark:text-slate-300"
-      on:change={handleBackgroundImageUpload}
-    />
+    <div class="flex flex-col gap-2">
+      <label class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+        Upload image
+      </label>
+      <div class="flex flex-wrap items-center gap-3">
+        <label
+          class="group inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200/80 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-white dark:border-slate-700/70 dark:bg-slate-900/60 dark:text-slate-200"
+        >
+          <span>Choose file</span>
+          <input
+            type="file"
+            accept="image/*"
+            bind:this={imageInput}
+            class="sr-only"
+            on:change={handleBackgroundImageUpload}
+          />
+        </label>
+        <p class="text-sm text-slate-500 dark:text-slate-400">
+          {backgroundImageLabel}
+        </p>
+      </div>
+      <p class="text-xs text-slate-400 dark:text-slate-500">
+        Drop a PNG or JPG to replace the background.
+      </p>
+    </div>
     {#if $customBackgroundImage}
       <div class="rounded-xl border border-slate-200/80 bg-white/80 p-2 shadow-sm dark:border-slate-700/70 dark:bg-slate-900/60">
         <img
