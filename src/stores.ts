@@ -683,26 +683,28 @@ const screenStateSchema = z.object({
   horizAlign: z
     .enum(horizontalAlignmentOptions)
     .optional()
-    .default(HorizAlign.left),
+    .default(HorizAlign.center),
   vertAlign: z
     .enum(verticalAlignmentOptions)
     .optional()
-    .default(VertAlign.bottom),
+    .default(VertAlign.center),
   // TODO: border radius?
 });
-export type ScreenState = z.infer<typeof webcamStateSchema>;
+export type ScreenState = z.infer<typeof screenStateSchema>;
 
 export const screenLayoutState = (() => {
-  let initScreenState: WebcamLayoutState = {
-    horizAlign: HorizAlign.left,
-    vertAlign: VertAlign.bottom,
+  let initScreenState: ScreenState = {
+    horizAlign: HorizAlign.center,
+    vertAlign: VertAlign.center,
   };
   try {
     const storedScreenState = localStorage.getItem("screenState");
-    initScreenState = webcamStateSchema.parse(JSON.parse(storedScreenState));
+    if (storedScreenState) {
+      initScreenState = screenStateSchema.parse(JSON.parse(storedScreenState));
+    }
   } catch {}
 
-  const store = writable<WebcamLayoutState>(initScreenState);
+  const store = writable<ScreenState>(initScreenState);
 
   const _set = store.set;
   store.set = (screenState) => {
