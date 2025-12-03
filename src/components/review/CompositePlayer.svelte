@@ -3,7 +3,7 @@
   import type { TimelineSnapshot } from "../../stores/timeline";
   import { computeZoomState } from "../../utils/timelinePlayback";
   import { drawScreenShare, drawWebcam } from "../../utils/layoutDrawers";
-  import { computePointerState } from "../../utils/pointerState";
+  import { computePointerState, type ComputedPointerState } from "../../utils/pointerState";
   import { calculateScreenPlacement } from "../../utils/layoutDrawers";
   import type {
     Background,
@@ -251,11 +251,8 @@
     ctx.translate(-pivotX, -pivotY);
   };
 
-  const drawMouseCursor = () => {
-    if (!showMouse || pointerRecords.length === 0) return;
-    
-    const pointerState = computePointerState(screenVideo.currentTime, pointerRecords);
-    if (!pointerState.visible) return;
+  const drawMouseCursor = (pointerState: ComputedPointerState) => {
+    if (!showMouse || pointerRecords.length === 0 || !pointerState.visible) return;
     
     const placement = calculateScreenPlacement(
       canvasSize,
@@ -307,10 +304,13 @@
 
     ctx.save();
     const { scale, focusX, focusY } = computeZoomState(snapshot.events, screenVideo.currentTime);
-    applyZoom(scale, focusX, focusY);
+    const pointerState = computePointerState(screenVideo.currentTime, pointerRecords);
+    const zoomFocusX = pointerState.visible ? pointerState.x : focusX;
+    const zoomFocusY = pointerState.visible ? pointerState.y : focusY;
+    applyZoom(scale, zoomFocusX, zoomFocusY);
     if (showScreen) {
       drawScreenShare(drawArgs);
-      drawMouseCursor();
+      drawMouseCursor(pointerState);
     }
     ctx.restore();
 
