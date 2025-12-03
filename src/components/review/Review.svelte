@@ -45,6 +45,10 @@
   export let onZipPointerFileChange: (event: Event) => void = () => {};
   export let clickEvents: PointerEventRecord[] = [];
   export let sortedClickEvents: PointerEventRecord[] = [];
+  export let pointerRecords: PointerEventRecord[] = [];
+  export let pointerIconImageUrl: string | null = null;
+  export let pointerIconPressedImageUrl: string | null = null;
+  export let pointerIndicatorSize: number = 14;
   export let videoDuration = 0;
   export let videoCurrentTime = 0;
   export let screenWidth = 0;
@@ -57,6 +61,11 @@
   export let addZoomForClick: (event: PointerEventRecord) => void;
   export let timelineDuration = 0;
 
+  $: hasWebcam = !!assets?.webcam;
+  $: hasAudio = !!assets?.audio;
+
+  $: if (!hasWebcam) includeWebcamTrack = false;
+  $: if (!hasAudio) includeAudioTrack = false;
 </script>
 
 {#if lastRecording && assets}
@@ -85,12 +94,16 @@
             showMouse={includePointerTrack}
             includeAudio={includeAudioTrack}
             frameRate={recordingFPS}
+            pointerRecords={pointerRecords}
+            pointerIconUrl={pointerIconImageUrl}
+            pointerIconPressedUrl={pointerIconPressedImageUrl}
+            pointerIndicatorSize={pointerIndicatorSize}
             bind:duration={videoDuration}
             bind:currentTime={videoCurrentTime}
             bind:screenWidth={screenWidth}
             bind:screenHeight={screenHeight}
           />
-          <div class="pointer-indicator" style={pointerStyle} />
+          <!-- <div class="pointer-indicator" style={pointerStyle} /> -->
         </div>
 
         <Timeline
@@ -108,8 +121,14 @@
 
       <div class="toggle-group">
         <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includePointerTrack} /> <span>Include pointer</span></label>
-        <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includeWebcamTrack} /> <span>Include webcam</span></label>
-        <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includeAudioTrack} /> <span>Include audio</span></label>
+        <label class="cb" class:disabled={!hasWebcam}>
+          <input type="checkbox" class="cb-input" bind:checked={includeWebcamTrack} disabled={!hasWebcam} />
+          <span>Include webcam</span>
+        </label>
+        <label class="cb" class:disabled={!hasAudio}>
+          <input type="checkbox" class="cb-input" bind:checked={includeAudioTrack} disabled={!hasAudio} />
+          <span>Include audio</span>
+        </label>
       </div>
 
       <PointerStyleControls
@@ -130,7 +149,7 @@
             Download edited video
           {/if}
         </button>
-        <button class="danger" on:click={resetToRecorder}>Back to recorder</button>
+        <button class="secondary" on:click={resetToRecorder}>Back to recorder</button>
       </div>
 
       <dl class="stats">
@@ -144,7 +163,7 @@
 {:else}
   <div class="fallback">
     <p>No recording available.</p>
-    <button class="primary" on:click={resetToRecorder}>Back to recorder</button>
+    <button class="secondary" on:click={resetToRecorder}>Back to recorder</button>
   </div>
 {/if}
 
@@ -243,6 +262,11 @@
     gap: 0.5rem;
     font-size: 0.95rem;
     color: #334155;
+    cursor: pointer;
+  }
+  .toggle-group .cb.disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
   .cb-input {
     appearance: none;
@@ -269,6 +293,10 @@
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
   }
+  .cb-input:disabled {
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+  }
 
   .review-aside h1 {
     margin: 0;
@@ -288,18 +316,33 @@
   }
 
   .primary,
-  .danger {
+  .danger,
+  .secondary {
     border-radius: 10px;
     font-weight: 600;
     padding: 0.7rem 1rem;
     border: 1px solid transparent;
     cursor: pointer;
-    transition: background 0.15s ease;
+    transition: all 0.15s ease;
   }
 
   .primary { background: #111827; color: #fff; }
   .primary:disabled { opacity: 0.6; cursor: not-allowed; }
+  .primary:hover:not(:disabled) { background: #1f2937; }
+  
   .danger { background: #ef4444; color: #fff; }
+  .danger:hover { background: #dc2626; }
+
+  .secondary {
+    background: #ffffff;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+  }
+  .secondary:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+    border-color: #94a3b8;
+  }
 
   .stats {
     display: grid;
