@@ -524,7 +524,7 @@
   };
 
   $: clickEvents = $lastRecording
-    ? ($lastRecording.events.filter((event) => event.kind === "click" || event.kind === "pointerdown") as PointerEventRecord[])
+    ? ($lastRecording.events.filter((event) => event.kind === "click") as PointerEventRecord[])
     : [];
   $: sortedClickEvents = [...clickEvents].sort((a, b) => a.t - b.t);
 

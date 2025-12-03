@@ -9,6 +9,9 @@
   export let clickEvents: PointerEventRecord[] = [];
   export let onAddZoomForClick: ((clickEvent: PointerEventRecord) => void) | null = null;
 
+  // log click events for debugging
+  $: console.log("Timeline click events:", clickEvents);
+
   let zoomDraft = false;
   let trackEl: HTMLDivElement | null = null;
   let draggingTrim: "start" | "end" | null = null;
@@ -31,7 +34,12 @@
   };
 
   const pointerSeries = (events: PointerEventRecord[]) =>
-    events.filter((event) => event.kind === "pointermove" || event.kind === "click");
+    events.filter(
+      (event) =>
+        event.kind === "pointermove" ||
+        event.kind === "click" ||
+        event.kind === "pointerdown"
+    );
 
   const formatTime = (seconds: number) => {
     const whole = Math.max(0, Math.floor(seconds));

@@ -113,7 +113,7 @@ struct RecordingSession {
 // Internal mouse event for storage
 #[derive(Clone)]
 struct InternalMouseEvent {
-    timestamp_ms: u64,
+    timestamp_unix_ms: u64,
     x: i32,
     y: i32,
     screen_width: u32,
@@ -211,14 +211,13 @@ fn start_mouse_button_listener() {
                     state.last_button_state = button_state;
                     
                     // If recording, add a click event
-                    if let Some(start_time) = state.recording_start_time {
+                    if state.recording_frame_tx.is_some() {
                         let (mouse_x, mouse_y) = get_mouse_position();
                         if let (Some(mx), Some(my)) = (mouse_x, mouse_y) {
                             let timestamp = SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .map(|d| d.as_millis() as u64)
                                 .unwrap_or(0);
-                            let relative_ts = timestamp.saturating_sub(start_time);
                             
                             // Use cached screen dimensions for consistent normalization
                             let sw = state.current_screen_width;
@@ -227,7 +226,7 @@ fn start_mouse_button_listener() {
                             // Compute is_pressed before pushing to avoid borrow issues
                             let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
                             state.mouse_events.push(InternalMouseEvent {
-                                timestamp_ms: relative_ts,
+                                timestamp_unix_ms: timestamp,
                                 x: mx,
                                 y: my,
                                 screen_width: sw,
@@ -257,14 +256,13 @@ fn start_mouse_button_listener() {
                     state.last_button_state = button_state;
                     
                     // If recording, add a release event
-                    if let Some(start_time) = state.recording_start_time {
+                    if state.recording_frame_tx.is_some() {
                         let (mouse_x, mouse_y) = get_mouse_position();
                         if let (Some(mx), Some(my)) = (mouse_x, mouse_y) {
                             let timestamp = SystemTime::now()
                                 .duration_since(UNIX_EPOCH)
                                 .map(|d| d.as_millis() as u64)
                                 .unwrap_or(0);
-                            let relative_ts = timestamp.saturating_sub(start_time);
                             
                             // Use cached screen dimensions for consistent normalization
                             let sw = state.current_screen_width;
@@ -273,7 +271,7 @@ fn start_mouse_button_listener() {
                             // Compute is_pressed before pushing to avoid borrow issues
                             let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
                             state.mouse_events.push(InternalMouseEvent {
-                                timestamp_ms: relative_ts,
+                                timestamp_unix_ms: timestamp,
                                 x: mx,
                                 y: my,
                                 screen_width: sw,
@@ -486,6 +484,7 @@ pub fn start_capture(options: RecordingOptions) -> Result<()> {
     TOKIO_RUNTIME.spawn(async move {
         let interval = tokio::time::Duration::from_millis(1000 / frame_rate as u64);
         let mut ticker = tokio::time::interval(interval);
+        let mut dropped_frames: u64 = 0;
 
         loop {
             tokio::select! {
@@ -501,7 +500,7 @@ pub fn start_capture(options: RecordingOptions) -> Result<()> {
                         let _ = frame_tx.send(frame_data.clone());
 
                         // If a recording session is active, feed the recorder queue and store mouse events
-                        let (rec_tx, start_time, screen_dims) = {
+                        let (rec_tx, screen_dims) = {
                             let mut state = CAPTURE_STATE.lock();
                             
                             // Update cached dimensions from current frame
@@ -510,21 +509,19 @@ pub fn start_capture(options: RecordingOptions) -> Result<()> {
 
                             (
                                 state.recording_frame_tx.clone(),
-                                state.recording_start_time,
                                 state.target.as_ref().map(|_| (frame_data.width, frame_data.height)),
                             )
                         };
                         
                         if let Some(rec_tx) = rec_tx {
                             // Store mouse event with frame-aligned timestamp
-                            if let (Some(mx), Some(my), Some(start), Some((sw, sh))) = 
-                                (frame_data.mouse_x, frame_data.mouse_y, start_time, screen_dims) 
+                            if let (Some(mx), Some(my), Some((sw, sh))) = 
+                                (frame_data.mouse_x, frame_data.mouse_y, screen_dims) 
                             {
-                                let relative_ts = frame_data.timestamp_ms.saturating_sub(start);
                                 let mut state = CAPTURE_STATE.lock();
                                 let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
                                 state.mouse_events.push(InternalMouseEvent {
-                                    timestamp_ms: relative_ts,
+                                    timestamp_unix_ms: frame_data.timestamp_ms,
                                     x: mx,
                                     y: my,
                                     screen_width: sw,
@@ -537,7 +534,10 @@ pub fn start_capture(options: RecordingOptions) -> Result<()> {
                             if let Err(err) = rec_tx.try_send(frame_data) {
                                 match err {
                                     mpsc::error::TrySendError::Full(_) => {
-                                        eprintln!("Recorder queue full, dropping frame");
+                                        dropped_frames += 1;
+                                        if dropped_frames == 1 || dropped_frames % 30 == 0 {
+                                            eprintln!("Recorder queue full, dropping frame (total dropped: {})", dropped_frames);
+                                        }
                                     }
                                     mpsc::error::TrySendError::Closed(_) => {
                                         // Recording channel closed, ignore
@@ -674,7 +674,14 @@ pub fn start_recording(options: RecordingOptions) -> Result<String> {
     }
 
     // Start ffmpeg recording thread
-    start_ffmpeg_recording_internal(file_path.clone(), rec_rx)?;
+    let start_ts = start_ffmpeg_recording_internal(file_path.clone(), rec_rx)?;
+
+    // Update recording_start_time to the precise video start timestamp for sync
+    // Note: Do NOT clear mouse_events here - they were already cleared above
+    {
+        let mut state = CAPTURE_STATE.lock();
+        state.recording_start_time = Some(start_ts);
+    }
 
     Ok(file_path_str)
 }
@@ -682,7 +689,7 @@ pub fn start_recording(options: RecordingOptions) -> Result<String> {
 fn start_ffmpeg_recording_internal(
     file_path: PathBuf,
     mut frame_rx: mpsc::Receiver<InternalFrame>,
-) -> Result<()> {
+) -> Result<u64> {
     let (target, frame_rate) = {
         let state = CAPTURE_STATE.lock();
         let target = state
@@ -698,6 +705,7 @@ fn start_ffmpeg_recording_internal(
 
     let width = first_frame.width;
     let height = first_frame.height;
+    let start_ts = first_frame.timestamp_ms;
 
     if width == 0 || height == 0 {
         return Err(Error::from_reason("Invalid frame dimensions"));
@@ -747,6 +755,8 @@ fn start_ffmpeg_recording_internal(
                 .ok_or_else(|| "Failed to open ffmpeg stdin".to_string())?;
 
             let mut frame_count: u64 = 0;
+            let mut last_pixels = first_frame.pixels.clone();
+            let ms_per_frame = 1000.0 / frame_rate as f64;
 
             // Write initial frame immediately
             stdin
@@ -775,9 +785,46 @@ fn start_ffmpeg_recording_internal(
                     continue;
                 }
 
+                // Calculate how many frames we expect to have written by now based on timestamp
+                let elapsed_ms = frame.timestamp_ms.saturating_sub(start_ts);
+                let expected_frames = (elapsed_ms as f64 / ms_per_frame).round() as u64;
+
+                // If we are behind, fill with duplicate frames (CFR enforcement)
+                // We write up to expected_frames, but at least ensure we write the NEW frame eventually.
+                // Actually, we should write duplicates for all frames strictly BEFORE the current one.
+                // Then write the current one.
+                
+                // Example:
+                // frame_count = 1 (frame 0 written).
+                // New frame at 100ms (fps 30, ~33ms).
+                // expected_frames = 100 / 33.33 = 3.
+                // We need frames 1 and 2 to be duplicates of frame 0.
+                // Then frame 3 is the new frame.
+                
+                // Note: frame_count is 1-based (number of frames written).
+                // expected_frames is 0-based index? No, it's count.
+                // If t=0, expected=0. But we wrote 1.
+                // Let's use expected_index logic.
+                
+                // Frame 0: t=0. Written. frame_count=1.
+                // Next Frame: t=100. expected_index = 3.
+                // We need to write indices 1 and 2.
+                // So while frame_count <= expected_index (wait, if expected is 3, we want to write slot 3 with NEW frame).
+                // So we want to fill slots 1, 2 with OLD frame.
+                // So while frame_count < expected_frames:
+                
+                while frame_count < expected_frames {
+                   if let Err(err) = stdin.write_all(&last_pixels) {
+                        return Err(format!("Failed to pipe duplicate frame: {}", err));
+                    }
+                    frame_count += 1;
+                }
+
                 if let Err(err) = stdin.write_all(&frame.pixels) {
                     return Err(format!("Failed to pipe frame: {}", err));
                 }
+                
+                last_pixels = frame.pixels; // Update last pixels for next gap
                 frame_count += 1;
             }
 
@@ -800,7 +847,7 @@ fn start_ffmpeg_recording_internal(
         });
     }
 
-    Ok(())
+    Ok(start_ts)
 }
 
 #[napi]
@@ -897,10 +944,12 @@ pub fn take_screenshot(target_id: String, capture_type: String) -> Result<String
 #[napi]
 pub fn get_recording_mouse_events() -> Vec<MouseEventRecord> {
     let state = CAPTURE_STATE.lock();
+    let start_time = state.recording_start_time.unwrap_or(0);
     state
         .mouse_events
         .iter()
         .map(|e| {
+            let relative_ts = e.timestamp_unix_ms.saturating_sub(start_time);
             let button_state_str = match e.button_state {
                 MouseButtonState::None => "none",
                 MouseButtonState::LeftDown => "left_down",
@@ -911,7 +960,7 @@ pub fn get_recording_mouse_events() -> Vec<MouseEventRecord> {
                 MouseButtonState::MiddleUp => "middle_up",
             };
             MouseEventRecord {
-                timestamp_ms: e.timestamp_ms as i64,
+                timestamp_ms: relative_ts as i64,
                 x: e.x,
                 y: e.y,
                 normalized_x: if e.screen_width > 0 {

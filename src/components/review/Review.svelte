@@ -96,7 +96,7 @@
         <Timeline
           duration={timelineDuration}
           currentTime={videoCurrentTime}
-          clickEvents={clickEvents}
+          clickEvents={sortedClickEvents}
           onAddZoomForClick={addZoomForClick}
         />
       </article>
@@ -218,7 +218,7 @@
     background-repeat: no-repeat;
     pointer-events: none;
     transition: opacity 0.2s ease;
-    transform: translate(-50%, -50%);
+    transform: translate(0%, -100%);
   }
 
   .review-aside {
