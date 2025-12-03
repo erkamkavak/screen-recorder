@@ -85,7 +85,7 @@
     { value: "mp4", label: "MP4 (H.264)" },
     { value: "webm", label: "WebM (VP9)" },
   ];
-  let renderFormat: RenderFormat = "mp4";
+  let renderFormat: RenderFormat = "webm";
   let supportedRenderFormats: Record<RenderFormat, boolean> = { mp4: true, webm: true };
   let renderFormatOptions: RenderFormatOption[] = [];
   $: renderFormatOptions = baseRenderFormatOptions.map((option) => ({

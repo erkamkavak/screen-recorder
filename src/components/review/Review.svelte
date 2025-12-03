@@ -262,7 +262,6 @@
             {/each}
           </select>
         </div>
-        <p class="format-hint">Renderer prefers MP4 but will fall back to WebM when necessary.</p>
       </div>
 
       <PointerStyleControls
@@ -493,12 +492,6 @@
     border: 1px solid #cbd5f5;
     font-size: 0.95rem;
     background: #fff;
-  }
-
-  .format-hint {
-    margin: 0.25rem 0 0;
-    font-size: 0.75rem;
-    color: #64748b;
   }
 
   .review-aside h1 {
