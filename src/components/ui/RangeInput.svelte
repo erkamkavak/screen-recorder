@@ -14,6 +14,17 @@
 
   const dispatch = createEventDispatcher<{ input: number }>();
 
+  const clampValue = (val: number) => Math.min(Math.max(val, min), max);
+
+  let boundedValue = value;
+  let fillPercent = 0;
+
+  $: boundedValue = clampValue(value);
+  $: fillPercent =
+    max <= min
+      ? 100
+      : Math.round(((boundedValue - min) / (max - min)) * 100);
+
   const handleInput = (event: Event) => {
     const target = event.target as HTMLInputElement;
     const newValue = Number(target.value);
@@ -30,11 +41,11 @@
       showPercentage ? "grid-cols-[1fr_32px]" : "grid-cols-[1fr_76px]"
     )}
   >
-    <div class="relative flex items-center">
-      <input
-        type="range"
-        {name}
-        id={name}
+      <div class="relative flex items-center">
+        <input
+          type="range"
+          {name}
+          id={name}
         class={clsx(
           "z-20 block w-full border-fmd-gray rounded-md bg-transparent appearance-none my-2.5 w-full border-0",
           isDisabled ? "opacity-30" : ""
@@ -48,13 +59,13 @@
       />
       <div
         class="absolute left-0 h-1 bg-fmd-red z-10"
-        style={`width: ${Math.ceil((value / max) * 100)}%`}
+        style={`width: ${fillPercent}%`}
       />
       <div class="absolute left-0 h-1 w-full bg-fmd-red/20 dark:bg-fmd-white/30 z-0" />
     </div>
     {#if showPercentage}
       <div class="text-xs dark:text-white text-right">
-        {Math.floor((value / max) * 100)}%
+        {fillPercent}%
       </div>
     {:else}
       <input
