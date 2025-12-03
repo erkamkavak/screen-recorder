@@ -2,7 +2,9 @@
   import { onDestroy, onMount } from "svelte";
   import type { TimelineSnapshot } from "../../stores/timeline";
   import { computeZoomState } from "../../utils/timelinePlayback";
-  import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "../../utils/layoutDrawers";
+  import { drawScreenShare, drawWebcam } from "../../utils/layoutDrawers";
+  import { computePointerState } from "../../utils/pointerState";
+  import { calculateScreenPlacement } from "../../utils/layoutDrawers";
   import type {
     Background,
     CanvasSize,
@@ -31,6 +33,13 @@
   export let includeAudio: boolean = true;
   export let frameRate: number = 30;
 
+  export let pointerRecords: any[] = [];
+  export let pointerIconUrl: string | null = null;
+  export let pointerIconPressedUrl: string | null = null;
+  export let pointerIndicatorSize: number = 18;
+
+  let pointerIconImage: HTMLImageElement | null = null;
+  let pointerPressedIconImage: HTMLImageElement | null = null;
   export let duration: number = 0;
   export let currentTime: number = 0;
   export let screenWidth: number = 0;
@@ -41,12 +50,10 @@
 
   let screenVideo: HTMLVideoElement | null = null;
   let webcamVideo: HTMLVideoElement | null = null;
-  let mouseVideo: HTMLVideoElement | null = null;
   let audioEl: HTMLAudioElement | null = null;
 
   let screenUrl: string | null = null;
   let webcamUrl: string | null = null;
-  let mouseUrl: string | null = null;
   let audioUrl: string | null = null;
 
   let screenShare: Share | null = null;
@@ -132,6 +139,15 @@
     return v;
   };
 
+  const loadImage = (src: string) => {
+    return new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  };
+
   const createAudio = (src: string) => {
     const a = document.createElement("audio");
     a.src = src;
@@ -152,12 +168,16 @@
     webcamVideo = webcamUrl ? createVideo(webcamUrl) : null;
     if (webcamVideo) await waitForMetadata(webcamVideo);
 
-    mouseUrl = await safeLoad(assets.mouse ?? null);
-    mouseVideo = mouseUrl ? createVideo(mouseUrl) : null;
-    if (mouseVideo) await waitForMetadata(mouseVideo);
-
     audioUrl = includeAudio ? await safeLoad(assets.audio ?? null) : null;
     audioEl = audioUrl ? createAudio(audioUrl) : null;
+
+    // Load pointer icons
+    if (pointerIconUrl) {
+      pointerIconImage = await loadImage(pointerIconUrl);
+    }
+    if (pointerIconPressedUrl) {
+      pointerPressedIconImage = await loadImage(pointerIconPressedUrl);
+    }
 
     canvasEl.width = canvasSize.width;
     canvasEl.height = canvasSize.height;
@@ -231,6 +251,53 @@
     ctx.translate(-pivotX, -pivotY);
   };
 
+  const drawMouseCursor = () => {
+    if (!showMouse || pointerRecords.length === 0) return;
+    
+    const pointerState = computePointerState(screenVideo.currentTime, pointerRecords);
+    if (!pointerState.visible) return;
+    
+    const placement = calculateScreenPlacement(
+      canvasSize,
+      drawArgs.activeShare,
+      screenLayoutState,
+      generalLayoutState
+    );
+    
+    if (!placement) return;
+    
+    // Calculate pointer position with zoom
+    const pointerX = placement.x + pointerState.x * placement.width;
+    const pointerY = placement.y + pointerState.y * placement.height;
+    
+    // Select appropriate icon
+    const cursorShape = pointerState.cursorShape || "default";
+    const usePointerIcon = cursorShape === "pointer" || pointerState.isPressed;
+    const icon = usePointerIcon
+      ? pointerPressedIconImage
+      : pointerIconImage;
+    
+    if (icon) {
+      const size = pointerIndicatorSize * 5;
+      ctx.drawImage(icon, pointerX - size / 2, pointerY - Math.floor(2 * size / 3), size, size);
+    } else {
+      // Fallback to drawn cursor
+      ctx.fillStyle = cursorShape === "pointer" ? "#000000" : "#ffffff";
+      ctx.strokeStyle = "#000000";
+      ctx.lineWidth = 1;
+      const size = pointerIndicatorSize;
+      
+      // Draw simple cursor shape with transform: translate(0%, -100%)
+      ctx.beginPath();
+      ctx.moveTo(pointerX, pointerY - size);
+      ctx.lineTo(pointerX + size * 0.8, pointerY - size);
+      ctx.lineTo(pointerX, pointerY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+  };
+
   const drawFrame = () => {
     if (!ctx || !screenVideo || !drawArgs) return;
 
@@ -238,27 +305,14 @@
     ctx.imageSmoothingQuality = "high";
     ctx.globalCompositeOperation = "source-over";
 
-    // Zoom only the screen track
     ctx.save();
     const { scale, focusX, focusY } = computeZoomState(snapshot.events, screenVideo.currentTime);
     applyZoom(scale, focusX, focusY);
     if (showScreen) {
       drawScreenShare(drawArgs);
+      drawMouseCursor();
     }
     ctx.restore();
-
-    // Draw mouse overlay without zoom
-    if (showMouse && mouseVideo) {
-      const placement = calculateScreenPlacement(
-        canvasSize,
-        drawArgs.activeShare,
-        screenLayoutState,
-        generalLayoutState
-      );
-      if (placement) {
-        ctx.drawImage(mouseVideo, placement.x, placement.y, placement.width, placement.height);
-      }
-    }
 
     // Draw webcam without zoom
     if (showWebcam && webcamVideo) {
@@ -291,12 +345,10 @@
       }
       // keep media in sync
       if (webcamVideo) webcamVideo.currentTime = screenVideo.currentTime;
-      if (mouseVideo) mouseVideo.currentTime = screenVideo.currentTime;
       if (audioEl) audioEl.currentTime = screenVideo.currentTime;
       await Promise.all([
         screenVideo.play(),
         webcamVideo?.play() ?? Promise.resolve(),
-        mouseVideo?.play() ?? Promise.resolve(),
         includeAudio && audioEl ? audioEl.play() : Promise.resolve(),
       ]);
       startLoop();
@@ -335,7 +387,6 @@
     cancelAnimationFrame(animationId);
     screenVideo?.pause();
     webcamVideo?.pause();
-    mouseVideo?.pause();
     audioEl?.pause();
   };
 
@@ -352,7 +403,6 @@
     const clamped = clampToTrim(value);
     screenVideo.currentTime = clamped;
     if (webcamVideo) webcamVideo.currentTime = clamped;
-    if (mouseVideo) mouseVideo.currentTime = clamped;
     if (audioEl) audioEl.currentTime = clamped;
     currentTime = clamped;
   };
@@ -369,7 +419,6 @@
         currentTime = trimEnd();
         screenVideo.currentTime = currentTime;
         if (webcamVideo) webcamVideo.currentTime = currentTime;
-        if (mouseVideo) mouseVideo.currentTime = currentTime;
         if (audioEl) audioEl.currentTime = currentTime;
         drawFrame();
         return;

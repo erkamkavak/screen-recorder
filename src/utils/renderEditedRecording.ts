@@ -524,6 +524,17 @@ export const renderCompositeRecording = async (
       return;
     }
 
+    const placement = calculateScreenPlacement(
+      options.canvasSize,
+      drawArgs.activeShare,
+      options.screenLayoutState,
+      options.generalLayoutState
+    );
+    const pointerState = computePointerState(current, pointerRecords);
+    const pointerHasActivity = placement && pointerState.visible;
+    const pointerPivotX = pointerHasActivity ? placement.x + pointerState.x * placement.width : null;
+    const pointerPivotY = pointerHasActivity ? placement.y + pointerState.y * placement.height : null;
+
     const { scale, focusX, focusY } = computeZoomState(zoomEvents, current);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -533,43 +544,56 @@ export const renderCompositeRecording = async (
 
     // Zoom and draw screen only
     ctx.save();
-    const pivotX = focusX * canvas.width;
-    const pivotY = focusY * canvas.height;
+    const pivotXNormalized =
+      pointerPivotX !== null && canvas.width > 0
+        ? Math.min(Math.max(pointerPivotX / canvas.width, 0), 1)
+        : focusX;
+    const pivotYNormalized =
+      pointerPivotY !== null && canvas.height > 0
+        ? Math.min(Math.max(pointerPivotY / canvas.height, 0), 1)
+        : focusY;
+    const pivotX = pivotXNormalized * canvas.width;
+    const pivotY = pivotYNormalized * canvas.height;
     ctx.translate(pivotX, pivotY);
     ctx.scale(scale, scale);
     ctx.translate(-pivotX, -pivotY);
     if (toggles.showScreen) {
       drawScreenShare(drawArgs);
     }
-    ctx.restore();
 
-    // Draw pointer overlay without zoom
-    if (toggles.showMouse && pointerIconImage && pointerRecords.length) {
-      const placement = calculateScreenPlacement(
-        options.canvasSize,
-        drawArgs.activeShare,
-        options.screenLayoutState,
-        options.generalLayoutState
-      );
-      if (placement) {
-        const pointerState = computePointerState(current, pointerRecords);
-        if (pointerState.visible) {
-          const icon =
-            pointerState.isPressed && pointerPressedIconImage
-              ? pointerPressedIconImage
-              : pointerIconImage;
+    if (
+      toggles.showMouse &&
+      pointerRecords.length &&
+      placement &&
+      pointerState.visible
+    ) {
+      const cursorShape = pointerState.cursorShape || "default";
+      const usePointerIcon = cursorShape === "pointer" || pointerState.isPressed;
+      const icon = usePointerIcon
+        ? pointerPressedIconImage ?? pointerIconImage
+        : pointerIconImage;
 
-          if (icon && icon.naturalWidth && icon.naturalHeight) {
-            // Slightly enlarge the rendered pointer compared to the base size
-            const POINTER_RENDER_SCALE = 3.25;
-            const size = (options.pointerSize ?? 18) * POINTER_RENDER_SCALE * scaleFactor;
-            const pointerLeft = (placement.x + pointerState.x * placement.width) * scaleFactor;
-            const pointerTop = (placement.y + pointerState.y * placement.height) * scaleFactor;
-            ctx.drawImage(icon, pointerLeft - size / 2, pointerTop - size / 2, size, size);
-          }
-        }
+      const POINTER_RENDER_SCALE = 3.25;
+      const size = (options.pointerSize ?? 18) * POINTER_RENDER_SCALE * scaleFactor;
+      const pointerLeft = (placement.x + pointerState.x * placement.width) * scaleFactor;
+      const pointerTop = (placement.y + pointerState.y * placement.height) * scaleFactor;
+
+      if (icon) {
+        ctx.drawImage(icon, pointerLeft - size / 2, pointerTop - Math.floor((2 * size) / 3), size, size);
+      } else {
+        ctx.fillStyle = cursorShape === "pointer" ? "#000000" : "#ffffff";
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(pointerLeft, pointerTop - size);
+        ctx.lineTo(pointerLeft + size * 0.8, pointerTop - size);
+        ctx.lineTo(pointerLeft, pointerTop);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
       }
     }
+    ctx.restore();
 
     // Draw webcam without zoom
     if (toggles.showWebcam && webcamVideo) {
