@@ -1,5 +1,5 @@
 import type { TimelineSnapshot, TimelineZoomEvent } from "../stores/timeline";
-import { computeZoomState } from "./timelinePlayback";
+import { computeZoomState, mergeZoomEvents } from "./timelinePlayback";
 import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "./layoutDrawers";
 import { patchBlob } from "./blobHelpers";
 import { getPreferredMimeType } from "./getPreferredMimeType";
@@ -44,6 +44,7 @@ export interface RenderCompositeOptions {
   pointerIconUrl?: string | null;
   pointerIconPressedUrl?: string | null;
   pointerSize?: number;
+  outputExtension?: string;
 }
 
 export type RenderResult =
@@ -51,11 +52,13 @@ export type RenderResult =
       type: "blob";
       blob: Blob;
       mimeType: string;
+      ext: string;
     }
-  | {
+    | {
       type: "file";
       filePath: string;
       mimeType: string;
+      ext: string;
     };
 
 const ensureZoomEvents = (events: TimelineSnapshot["events"]): TimelineZoomEvent[] =>
@@ -236,10 +239,10 @@ export const renderCompositeRecording = async (
   const MAX_PIXELS = 1920 * 1080 * 1.5; // ~3MP max to keep memory reasonable
   let scaleFactor = 1.0;
   
-  if (targetPixels > MAX_PIXELS) {
-    scaleFactor = Math.sqrt(MAX_PIXELS / targetPixels);
-    console.warn(`[Render] Canvas too large (${(targetPixels / 1000000).toFixed(1)}MP), scaling to ${(scaleFactor * 100).toFixed(0)}% to reduce memory`);
-  }
+  // if (targetPixels > MAX_PIXELS) {
+  //   scaleFactor = Math.sqrt(MAX_PIXELS / targetPixels);
+  //   console.warn(`[Render] Canvas too large (${(targetPixels / 1000000).toFixed(1)}MP), scaling to ${(scaleFactor * 100).toFixed(0)}% to reduce memory`);
+  // }
   
   canvas.width = Math.round(options.canvasSize.width * scaleFactor);
   canvas.height = Math.round(options.canvasSize.height * scaleFactor);
@@ -315,7 +318,7 @@ export const renderCompositeRecording = async (
   const trimEnd = Math.min(snapshot.trimEnd ?? durationMs / 1000, durationMs / 1000);
   const effectiveDurationSec = Math.max(0.1, trimEnd - trimStart || durationMs / 1000 || 0.1);
   const effectiveDurationMs = Math.round(effectiveDurationSec * 1000);
-  const zoomEvents = ensureZoomEvents(snapshot.events);
+  const zoomEvents = mergeZoomEvents(ensureZoomEvents(snapshot.events));
 
   await Promise.all([
     seekVideo(screenVideo, trimStart),
@@ -342,7 +345,13 @@ export const renderCompositeRecording = async (
     }
   }
 
-  const mime = getPreferredMimeType({ includeAudio: Boolean(audioElement) });
+  const requestedExtension = (options.outputExtension ?? "webm").toLowerCase();
+  const normalizedExtension = requestedExtension === "mp4" ? "mp4" : "webm";
+  const mime = getPreferredMimeType({
+    includeAudio: Boolean(audioElement),
+    preferredExtension: normalizedExtension,
+  });
+  const skipDurationPatch = mime.ext !== "webm";
   // Lower bitrate to reduce memory usage (4 Mbps is still high quality)
   const recorder = new MediaRecorder(renderStream, {
     mimeType: mime.mimeType,
@@ -351,10 +360,11 @@ export const renderCompositeRecording = async (
   });
   const chunks: Blob[] = [];
   let renderFilePath: string | null = null;
+  const renderFileName = `rendered.${mime.ext}`;
   
   // Try to initialize streaming render
   try {
-    renderFilePath = await backendAPI.startRenderStream("rendered.webm");
+    renderFilePath = await backendAPI.startRenderStream(renderFileName);
   } catch (error) {
     console.warn("Failed to initialize streaming render, falling back to blob mode", error);
     renderFilePath = null;
@@ -395,25 +405,40 @@ export const renderCompositeRecording = async (
 
     let rawBlob: Blob;
     if (renderFilePath) {
-      await backendAPI.patchRenderFile(renderFilePath, effectiveDurationMs);
-      debugLog("Finalize returning file", { filePath: renderFilePath });
-      return {
-        type: "file",
-        filePath: renderFilePath,
-        mimeType: mime.mimeType,
-      };
+      try {
+        await backendAPI.patchRenderFile({
+          filePath: renderFilePath,
+          durationMs: effectiveDurationMs,
+          skipPatch: skipDurationPatch,
+        });
+        debugLog("Finalize returning file", { filePath: renderFilePath });
+        return {
+          type: "file",
+          filePath: renderFilePath,
+          mimeType: mime.mimeType,
+          ext: mime.ext,
+        };
+      } finally {
+        await backendAPI.closeRenderStream(renderFilePath);
+      }
     } else {
       const blobType = chunks[0]?.type || mime.mimeType;
       rawBlob = new Blob(chunks, { type: blobType });
       (chunks as any).length = 0;
     }
 
-    const patched = await patchBlob(rawBlob, effectiveDurationMs);
-    debugLog("Finalize returning blob", { durationMs: effectiveDurationMs, byteLength: patched.size });
+    const finalBlob = skipDurationPatch
+      ? rawBlob
+      : await patchBlob(rawBlob, effectiveDurationMs);
+    debugLog("Finalize returning blob", {
+      durationMs: effectiveDurationMs,
+      byteLength: finalBlob.size,
+    });
     return {
       type: "blob",
-      blob: patched,
+      blob: finalBlob,
       mimeType: mime.mimeType,
+      ext: mime.ext,
     };
   };
 
@@ -541,6 +566,7 @@ export const renderCompositeRecording = async (
     // Use lower quality when skipping frames to save memory
     ctx.imageSmoothingQuality = skipFrames > 10 ? "medium" : "high";
     ctx.globalCompositeOperation = "source-over";
+    background.draw(drawArgs);
 
     // Zoom and draw screen only
     ctx.save();
@@ -573,7 +599,7 @@ export const renderCompositeRecording = async (
         ? pointerPressedIconImage ?? pointerIconImage
         : pointerIconImage;
 
-      const POINTER_RENDER_SCALE = 3.25;
+      const POINTER_RENDER_SCALE = 5;
       const size = (options.pointerSize ?? 18) * POINTER_RENDER_SCALE * scaleFactor;
       const pointerLeft = (placement.x + pointerState.x * placement.width) * scaleFactor;
       const pointerTop = (placement.y + pointerState.y * placement.height) * scaleFactor;
@@ -599,12 +625,6 @@ export const renderCompositeRecording = async (
     if (toggles.showWebcam && webcamVideo) {
       drawWebcam(drawArgs);
     }
-
-    // Background behind everything
-    ctx.globalCompositeOperation = "destination-over";
-    background.draw(drawArgs);
-    ctx.globalCompositeOperation = "source-over";
-
     onProgress?.(current, trimEnd);
     
     // Log memory every 100 frames to track usage
