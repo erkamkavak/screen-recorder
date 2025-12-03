@@ -56,6 +56,7 @@
   },
   "main": "electron/main.cjs",
   "build": {
+    "afterPack": "electron/fix-chrome-sandbox.cjs",
     "appId": "com.formidable.clips",
     "productName": "Clips",
     "directories": {
@@ -67,6 +68,7 @@
       "native/**/*.node",
       "native/index.js",
       "native/index.d.ts",
+      "native/package.json",
       "package.json"
     ],
     "extraResources": [
