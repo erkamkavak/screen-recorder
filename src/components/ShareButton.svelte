@@ -302,8 +302,10 @@
   };
 
   onMount(async () => {
-    isPickerVisible = true;
-    await refreshDesktopSources();
+    if (!share?.stream) {
+      isPickerVisible = true;
+      await refreshDesktopSources();
+    }
   });
 
   const removeShare = async (removingItemIndex) => {
@@ -379,6 +381,13 @@
       preview.srcObject = share.stream;
     }
     isActive = $screenShareState.activeIndex === index;
+  }
+
+  $: if (share.preview && share.stream && !share.preview.srcObject) {
+    share.preview.srcObject = share.stream;
+  }
+  $: if (share.stream) {
+    isPickerVisible = false;
   }
 </script>
 
