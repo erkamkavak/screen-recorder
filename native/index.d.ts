@@ -32,6 +32,7 @@ export interface MouseEventRecord {
   normalizedY: number
   buttonState: string
   isPressed: boolean
+  cursorShape: string
 }
 export declare function listSources(): Array<DesktopSource>
 export declare function startCapture(options: RecordingOptions): void

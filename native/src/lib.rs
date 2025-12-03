@@ -18,6 +18,8 @@ use mouse_position::mouse_position::Mouse;
 use rdev::{listen, Event, EventType, Button};
 use xcap::{Monitor, Window};
 
+mod cursor_shape;
+
 const RECORDING_DIR_NAME: &str = "clips-recordings";
 
 // Frame data structure for NAPI
@@ -101,6 +103,7 @@ pub struct MouseEventRecord {
     pub normalized_y: f64,
     pub button_state: String, // "none", "left_down", "left_up", "right_down", "right_up", "middle_down", "middle_up"
     pub is_pressed: bool, // true if any button is currently pressed
+    pub cursor_shape: String, // cursor shape name: "default", "pointer", "text", "crosshair", etc.
 }
 
 // Recording session (internal)
@@ -120,6 +123,7 @@ struct InternalMouseEvent {
     screen_height: u32,
     button_state: MouseButtonState,
     is_pressed: bool,
+    cursor_shape: String,
 }
 
 // Capture state (internal)
@@ -225,6 +229,10 @@ fn start_mouse_button_listener() {
                             
                             // Compute is_pressed before pushing to avoid borrow issues
                             let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
+                            // Get cursor shape (release lock temporarily to avoid deadlock)
+                            drop(state);
+                            let cursor_shape = cursor_shape::get_cursor_shape();
+                            let mut state = CAPTURE_STATE.lock();
                             state.mouse_events.push(InternalMouseEvent {
                                 timestamp_unix_ms: timestamp,
                                 x: mx,
@@ -233,6 +241,7 @@ fn start_mouse_button_listener() {
                                 screen_height: sh,
                                 button_state,
                                 is_pressed,
+                                cursor_shape,
                             });
                         }
                     }
@@ -270,6 +279,10 @@ fn start_mouse_button_listener() {
                             
                             // Compute is_pressed before pushing to avoid borrow issues
                             let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
+                            // Get cursor shape (release lock temporarily to avoid deadlock)
+                            drop(state);
+                            let cursor_shape = cursor_shape::get_cursor_shape();
+                            let mut state = CAPTURE_STATE.lock();
                             state.mouse_events.push(InternalMouseEvent {
                                 timestamp_unix_ms: timestamp,
                                 x: mx,
@@ -278,6 +291,7 @@ fn start_mouse_button_listener() {
                                 screen_height: sh,
                                 button_state,
                                 is_pressed,
+                                cursor_shape,
                             });
                         }
                     }
@@ -518,6 +532,8 @@ pub fn start_capture(options: RecordingOptions) -> Result<()> {
                             if let (Some(mx), Some(my), Some((sw, sh))) = 
                                 (frame_data.mouse_x, frame_data.mouse_y, screen_dims) 
                             {
+                                // Get cursor shape before acquiring lock
+                                let cursor_shape = cursor_shape::get_cursor_shape();
                                 let mut state = CAPTURE_STATE.lock();
                                 let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
                                 state.mouse_events.push(InternalMouseEvent {
@@ -528,6 +544,7 @@ pub fn start_capture(options: RecordingOptions) -> Result<()> {
                                     screen_height: sh,
                                     button_state: MouseButtonState::None, // Position events don't have button state
                                     is_pressed,
+                                    cursor_shape,
                                 });
                             }
                             
@@ -975,6 +992,7 @@ pub fn get_recording_mouse_events() -> Vec<MouseEventRecord> {
                 },
                 button_state: button_state_str.to_string(),
                 is_pressed: e.is_pressed,
+                cursor_shape: e.cursor_shape.clone(),
             }
         })
         .collect()
@@ -1011,6 +1029,10 @@ pub fn get_current_mouse_position() -> Result<Option<MouseEventRecord>> {
             let state = CAPTURE_STATE.lock();
             let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
             
+            // Get cursor shape (release lock first to avoid issues)
+            drop(state);
+            let cursor_shape = cursor_shape::get_cursor_shape();
+            
             Ok(Some(MouseEventRecord {
                 timestamp_ms: timestamp,
                 x,
@@ -1019,6 +1041,7 @@ pub fn get_current_mouse_position() -> Result<Option<MouseEventRecord>> {
                 normalized_y: y as f64 / sh as f64,
                 button_state: "none".to_string(),
                 is_pressed,
+                cursor_shape,
             }))
         }
         _ => Ok(None),
