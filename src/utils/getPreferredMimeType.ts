@@ -1,17 +1,30 @@
-export const getPreferredMimeType = (options?: { includeAudio?: boolean }) => {
+export const getPreferredMimeType = (options?: { includeAudio?: boolean; preferredExtension?: string }) => {
   const includeAudio = options?.includeAudio ?? false;
-  // Strongly prefer webm with VP9/VP8 to avoid Electron ffmpeg pixel format issues
-  const preferredVideo: { mimeType: string; ext: string }[] = [
-    { mimeType: "video/webm;codecs=vp9", ext: "webm" },
-    { mimeType: "video/webm;codecs=vp8", ext: "webm" },
-    { mimeType: "video/webm", ext: "webm" },
-  ];
-  const preferredAudio: { mimeType: string; ext: string }[] = includeAudio
+  const preferredExtension = options?.preferredExtension?.toLowerCase();
+  const preferMp4 = preferredExtension === "mp4";
+  const preferredVideo: { mimeType: string; ext: string }[] = preferMp4
     ? [
-        { mimeType: "video/webm;codecs=vp9,opus", ext: "webm" },
-        { mimeType: "video/webm;codecs=vp8,opus", ext: "webm" },
-        { mimeType: "video/webm;codecs=vp9", ext: "webm" },
+        { mimeType: "video/mp4;codecs=h264", ext: "mp4" },
+        { mimeType: "video/mp4;codecs=avc1", ext: "mp4" },
+        { mimeType: "video/mp4", ext: "mp4" },
       ]
+    : [
+        { mimeType: "video/webm;codecs=vp9", ext: "webm" },
+        { mimeType: "video/webm;codecs=vp8", ext: "webm" },
+        { mimeType: "video/webm", ext: "webm" },
+      ];
+  const preferredAudio: { mimeType: string; ext: string }[] = includeAudio
+    ? preferMp4
+      ? [
+          { mimeType: "video/mp4;codecs=h264,aac", ext: "mp4" },
+          { mimeType: "video/mp4;codecs=h264", ext: "mp4" },
+          { mimeType: "video/mp4", ext: "mp4" },
+        ]
+      : [
+          { mimeType: "video/webm;codecs=vp9,opus", ext: "webm" },
+          { mimeType: "video/webm;codecs=vp8,opus", ext: "webm" },
+          { mimeType: "video/webm;codecs=vp9", ext: "webm" },
+        ]
     : [];
   const fallbackList = includeAudio
     ? [...preferredAudio, ...preferredVideo, ...MIME_TYPES]

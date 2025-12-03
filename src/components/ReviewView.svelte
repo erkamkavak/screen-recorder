@@ -75,6 +75,24 @@
   let timelineDuration = 0;
   let recordedScreenWidth = 0;
   let recordedScreenHeight = 0;
+  type RenderFormat = "mp4" | "webm";
+  type RenderFormatOption = {
+    value: RenderFormat;
+    label: string;
+    supported: boolean;
+  };
+  const baseRenderFormatOptions: Array<{ value: RenderFormat; label: string }> = [
+    { value: "mp4", label: "MP4 (H.264)" },
+    { value: "webm", label: "WebM (VP9)" },
+  ];
+  let renderFormat: RenderFormat = "mp4";
+  let supportedRenderFormats: Record<RenderFormat, boolean> = { mp4: true, webm: true };
+  let renderFormatOptions: RenderFormatOption[] = [];
+  $: renderFormatOptions = baseRenderFormatOptions.map((option) => ({
+    value: option.value,
+    label: option.label,
+    supported: supportedRenderFormats[option.value],
+  }));
   
   let currentSnapshot = timelineStore.snapshot();
   // Reactive snapshot so zoom/trim changes reflect in composited preview
@@ -122,6 +140,28 @@
     return () => window.removeEventListener("resize", updateVideoFrameMetrics);
   });
 
+  onMount(() => {
+    const supportsType = (type: string) => {
+      if (typeof MediaRecorder === "undefined") return false;
+      try {
+        return MediaRecorder.isTypeSupported(type);
+      } catch {
+        return false;
+      }
+    };
+    supportedRenderFormats = {
+      mp4: supportsType("video/mp4;codecs=h264") || supportsType("video/mp4"),
+      webm: supportsType("video/webm;codecs=vp9") || supportsType("video/webm"),
+    };
+    if (!supportedRenderFormats[renderFormat]) {
+      renderFormat = supportedRenderFormats.mp4
+        ? "mp4"
+        : supportedRenderFormats.webm
+        ? "webm"
+        : renderFormat;
+    }
+  });
+
   $: if (playerFrameEl) {
     observeVideoFrame();
   } else {
@@ -147,6 +187,10 @@
   const clampToTimelineDuration = (value: number) => {
     const duration = Math.max(timelineDuration, 0);
     return Math.max(0, Math.min(value, duration));
+  };
+
+  const handleRenderFormatChange = (format: RenderFormat) => {
+    renderFormat = format;
   };
 
   const hexToRgba = (hex: string, alpha = 1) => {
@@ -575,6 +619,7 @@
     pointerIconUrl: pointerIconImageUrl,
     pointerIconPressedUrl: pointerIconPressedImageUrl,
     pointerSize: pointerIndicatorSize,
+    outputExtension: renderFormat,
     onProgress,
   });
 
@@ -582,6 +627,11 @@
     if (!$lastRecording) return;
     isRenderingVideo = true;
     renderProgress = 0;
+
+    const recordingBaseName = $lastRecording.fileName
+      ? $lastRecording.fileName.replace(/\.[^.]+$/, "")
+      : "recording";
+    const getDownloadName = (ext: string) => `edited-${recordingBaseName}.${ext}`;
 
     let cleanupPath: string | null = null;
     try {
@@ -598,7 +648,7 @@
         cleanupPath = result.filePath;
         const savedPath = await backendAPI.saveRenderedFile(
           result.filePath,
-          `edited-${$lastRecording.fileName}`
+          getDownloadName(result.ext ?? "webm")
         );
         if (!savedPath) {
           console.warn("Rendered file save cancelled");
@@ -610,7 +660,7 @@
       const url = URL.createObjectURL(result.blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `edited-${$lastRecording.fileName}`;
+      anchor.download = getDownloadName(result.ext ?? "webm");
       document.body.appendChild(anchor);
       anchor.click();
       setTimeout(() => {
@@ -669,4 +719,7 @@
   {downloadEditedVideo}
   {resetToRecorder}
   {addZoomForClick}
+  renderFormat={renderFormat}
+  renderFormatOptions={renderFormatOptions}
+  onRenderFormatChange={handleRenderFormatChange}
 />

@@ -50,6 +50,16 @@
   export let pointerIconImageUrl: string | null = null;
   export let pointerIconPressedImageUrl: string | null = null;
   export let pointerIndicatorSize: number = 14;
+  type RenderFormat = "mp4" | "webm";
+  type RenderFormatOption = {
+    value: RenderFormat;
+    label: string;
+    supported: boolean;
+  };
+  export let renderFormat: RenderFormat = "webm";
+  export let renderFormatOptions: RenderFormatOption[] = [];
+  export let onRenderFormatChange: (format: RenderFormat) => void = () => {};
+
   export let videoDuration = 0;
   export let videoCurrentTime = 0;
   export let screenWidth = 0;
@@ -71,6 +81,11 @@
   let asideWidthPx = minAsideWidth;
   let isResizing = false;
   let rootResizeObserver: ResizeObserver | null = null;
+
+  const handleRenderFormatSelect = (event: Event) => {
+    const select = event.currentTarget as HTMLSelectElement;
+    onRenderFormatChange(select.value as RenderFormat);
+  };
 
   const clampBetween = (value: number, minValue: number, maxValue: number) =>
     Math.max(minValue, Math.min(value, maxValue));
@@ -227,6 +242,27 @@
           <input type="checkbox" class="cb-input" bind:checked={includeAudioTrack} disabled={!hasAudio} />
           <span>Include audio</span>
         </label>
+      </div>
+
+      <div class="format-field">
+        <label class="field-label" for="render-format-select">Render format</label>
+        <div class="select-wrapper">
+          <select
+            id="render-format-select"
+            value={renderFormat}
+            on:change={handleRenderFormatSelect}
+          >
+            {#each renderFormatOptions as option}
+              <option value={option.value} disabled={!option.supported}>
+                {option.label}
+                {#if !option.supported}
+                  {" (unsupported)"}
+                {/if}
+              </option>
+            {/each}
+          </select>
+        </div>
+        <p class="format-hint">Renderer prefers MP4 but will fall back to WebM when necessary.</p>
       </div>
 
       <PointerStyleControls
@@ -436,6 +472,33 @@
   .cb-input:disabled {
     border-color: #cbd5e1;
     background: #f1f5f9;
+  }
+
+  .format-field {
+    margin-top: 0.75rem;
+  }
+
+  .field-label {
+    display: block;
+    font-size: 0.85rem;
+    color: #0f172a;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+
+  .select-wrapper select {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border-radius: 0.6rem;
+    border: 1px solid #cbd5f5;
+    font-size: 0.95rem;
+    background: #fff;
+  }
+
+  .format-hint {
+    margin: 0.25rem 0 0;
+    font-size: 0.75rem;
+    color: #64748b;
   }
 
   .review-aside h1 {
