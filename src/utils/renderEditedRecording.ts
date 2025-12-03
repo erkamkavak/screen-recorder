@@ -250,8 +250,7 @@ export const renderCompositeRecording = async (
   const ctx = canvas.getContext("2d", {
     // Hint that we'll read pixels frequently (for MediaRecorder)
     willReadFrequently: false,
-    // Don't need alpha for video rendering
-    alpha: false,
+    alpha: true,
   });
   if (!ctx) {
     throw new Error("Unable to render: canvas context unavailable");
@@ -314,6 +313,8 @@ export const renderCompositeRecording = async (
     screenLayoutState: options.screenLayoutState,
   };
 
+  const { onProgress, background, toggles } = options;
+
   const trimStart = Math.max(0, snapshot.trimStart);
   const trimEnd = Math.min(snapshot.trimEnd ?? durationMs / 1000, durationMs / 1000);
   const effectiveDurationSec = Math.max(0.1, trimEnd - trimStart || durationMs / 1000 || 0.1);
@@ -325,6 +326,15 @@ export const renderCompositeRecording = async (
     webcamVideo ? seekVideo(webcamVideo, trimStart) : Promise.resolve(),
   ]);
 
+  const targetFrameIntervalMs = 1000 / frameRate;
+  let lastRenderTimestamp = 0;
+
+  const MAX_PENDING_CHUNKS = 1;
+  let skipFrames = 0;
+  let chunkQueue: RenderChunkQueue | null = null;
+
+  renderFrameContent(screenVideo.currentTime || 0);
+  lastRenderTimestamp = performance.now();
   const renderStream = canvas.captureStream(frameRate);
   const audioUrl = options.toggles.includeAudio
     ? await loadAssetUrl(assets.audio)
@@ -370,10 +380,6 @@ export const renderCompositeRecording = async (
     renderFilePath = null;
   }
   
-  const MAX_PENDING_CHUNKS = 1;
-  let skipFrames = 0;
-  let chunkQueue: RenderChunkQueue | null = null;
-
   recorder.ondataavailable = (event) => {
     if (!event.data || event.data.size === 0) return;
 
@@ -405,22 +411,19 @@ export const renderCompositeRecording = async (
 
     let rawBlob: Blob;
     if (renderFilePath) {
-      try {
-        await backendAPI.patchRenderFile({
-          filePath: renderFilePath,
-          durationMs: effectiveDurationMs,
-          skipPatch: skipDurationPatch,
-        });
-        debugLog("Finalize returning file", { filePath: renderFilePath });
-        return {
-          type: "file",
-          filePath: renderFilePath,
-          mimeType: mime.mimeType,
-          ext: mime.ext,
-        };
-      } finally {
-        await backendAPI.closeRenderStream(renderFilePath);
-      }
+      await backendAPI.closeRenderStream(renderFilePath);
+      await backendAPI.patchRenderFile({
+        filePath: renderFilePath,
+        durationMs: effectiveDurationMs,
+        skipPatch: skipDurationPatch,
+      });
+      debugLog("Finalize returning file", { filePath: renderFilePath });
+      return {
+        type: "file",
+        filePath: renderFilePath,
+        mimeType: mime.mimeType,
+        ext: mime.ext,
+      };
     } else {
       const blobType = chunks[0]?.type || mime.mimeType;
       rawBlob = new Blob(chunks, { type: blobType });
@@ -520,35 +523,10 @@ export const renderCompositeRecording = async (
   const RECORDER_TIMESLICE_MS = 100;
   recorder.start(RECORDER_TIMESLICE_MS);
 
-  const { onProgress, background, toggles } = options;
   let stopped = false;
   let animationId: number;
 
-  const drawFrame = () => {
-    if (stopped) return;
-
-    // Implement backpressure when too many chunks are pending
-    const pendingChunks = chunkQueue?.pendingCount() ?? 0;
-    if (pendingChunks >= MAX_PENDING_CHUNKS) {
-      skipFrames++;
-      // Skip rendering this frame but still schedule next frame
-      animationId = requestAnimationFrame(drawFrame);
-      return;
-    }
-   
-    // Reset skip counter when we're caught up
-    if (skipFrames > 0 && pendingChunks === 0) {
-      skipFrames = 0;
-    }
-
-    const current = screenVideo.currentTime;
-    if (current >= trimEnd || screenVideo.ended) {
-      debugLog("DrawFrame stopping", { current, trimEnd, ended: screenVideo.ended });
-      onProgress?.(trimEnd, trimEnd);
-      stopLoop();
-      return;
-    }
-
+  function renderFrameContent(current: number) {
     const placement = calculateScreenPlacement(
       options.canvasSize,
       drawArgs.activeShare,
@@ -563,12 +541,10 @@ export const renderCompositeRecording = async (
     const { scale, focusX, focusY } = computeZoomState(zoomEvents, current);
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Use lower quality when skipping frames to save memory
     ctx.imageSmoothingQuality = skipFrames > 10 ? "medium" : "high";
     ctx.globalCompositeOperation = "source-over";
     background.draw(drawArgs);
 
-    // Zoom and draw screen only
     ctx.save();
     const pivotXNormalized =
       pointerPivotX !== null && canvas.width > 0
@@ -621,19 +597,49 @@ export const renderCompositeRecording = async (
     }
     ctx.restore();
 
-    // Draw webcam without zoom
     if (toggles.showWebcam && webcamVideo) {
       drawWebcam(drawArgs);
     }
     onProgress?.(current, trimEnd);
-    
-    // Log memory every 100 frames to track usage
-    if (Math.random() < 0.01) { // ~1% of frames
+
+    if (Math.random() < 0.01) {
       logMemory();
     }
-    
+  }
+
+  function drawFrame(timestamp?: number) {
+    if (stopped) return;
+
+    const now = typeof timestamp === "number" ? timestamp : performance.now();
+    if (now - lastRenderTimestamp < targetFrameIntervalMs) {
+      animationId = requestAnimationFrame(drawFrame);
+      return;
+    }
+    lastRenderTimestamp = now;
+
+    const pendingChunks = chunkQueue?.pendingCount() ?? 0;
+    if (pendingChunks >= MAX_PENDING_CHUNKS) {
+      skipFrames++;
+      animationId = requestAnimationFrame(drawFrame);
+      return;
+    }
+
+    if (skipFrames > 0 && pendingChunks === 0) {
+      skipFrames = 0;
+    }
+
+    const current = screenVideo.currentTime;
+    if (current >= trimEnd || screenVideo.ended) {
+      debugLog("DrawFrame stopping", { current, trimEnd, ended: screenVideo.ended });
+      onProgress?.(trimEnd, trimEnd);
+      stopLoop();
+      return;
+    }
+
+    lastRenderTimestamp = now;
+    renderFrameContent(current);
     animationId = requestAnimationFrame(drawFrame);
-  };
+  }
 
   const stopLoop = () => {
     if (stopped) return;
