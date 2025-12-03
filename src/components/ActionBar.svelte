@@ -7,7 +7,6 @@
   import ShareButton from "./ShareButton.svelte";
   import WebcamButton from "./WebcamButton.svelte";
   import MicButton from "./ui/MicButton.svelte";
-  import CheckIcon from "./icons/check.icon.svelte";
   import CloseIcon from "./icons/close.icon.svelte";
   import newUniqueId from "locally-unique-id-generator";
   import {
@@ -18,11 +17,11 @@
     micState,
     webcamState,
   } from "../stores.js";
-  import { backendAPI } from "../utils/backendAPI";
   import ActionButton from "./ui/ActionButton.svelte";
 
   const dispatch = createEventDispatcher();
   let shares:Share[]=[];
+  let isTakingScreenshot = false;
 
   const disableMic = () => {
     if ($micState.stream) {
@@ -44,6 +43,7 @@
   };
 
   const handleAddScreenShare = () => {
+    if ($screenShareState.shares.length >= 1) return;
     $screenShareState.shares.push({ width: 0, height: 0,id:newUniqueId() });
     $screenShareState.shares = $screenShareState.shares;
   };
@@ -63,166 +63,153 @@
   };
 
   const exportPreviewScreenshot = async () => {
-    const active = $screenShareState.shares[$screenShareState.activeIndex ?? 0];
-    const targetId = active?.id ?? "monitor:0";
-    const captureType = targetId?.startsWith("window:") ? "window" : "monitor";
+    if (isTakingScreenshot) return;
+    isTakingScreenshot = true;
+    
     try {
-      const dataUrl = await backendAPI.takeScreenshot({
-        targetId,
-        captureType,
-        includeCursor: true,
-      });
-      downloadDataUrl(dataUrl, "preview-screenshot.png");
-      return;
+      const capture = $previewScreenshotCapture;
+      if (!capture) {
+        console.warn("No preview capture available");
+        return;
+      }      
+      const blob = await capture();
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      downloadDataUrl(url, "preview-screenshot.png");
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+      }, 500);
     } catch (error) {
-      console.warn("Native screenshot failed, falling back to preview capture", error);
+      console.error("Failed to export screenshot:", error);
+    } finally {
+      isTakingScreenshot = false;
     }
-
-    const capture = $previewScreenshotCapture;
-    if (!capture) return;
-    const blob = await capture();
-    if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    downloadDataUrl(url, "preview-screenshot.png");
-    setTimeout(() => {
-      URL.revokeObjectURL(url);
-    }, 500);
   };
 </script>
 
-<div class="flex flex-col gap-5 px-5 py-5 lg:px-6">
-  <div class="flex flex-wrap items-start gap-6">
-    <div class="flex min-w-[180px] flex-col gap-2">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-        Audio & Camera
-      </p>
-      <div class="flex items-center gap-4 rounded-2xl border border-slate-200/80 bg-white/80 px-4 py-3 shadow-sm backdrop-blur dark:border-slate-800/80 dark:bg-slate-900/60">
-        <div class="flex flex-col items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-          <div class="relative h-12 w-12">
-            <MicButton />
-            {#if $micState.stream}
-              <button
-                type="button"
-                class="group absolute -top-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 shadow-sm ring-1 ring-emerald-100 transition hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/40 dark:hover:bg-emerald-500/20"
-                on:click={disableMic}
-                aria-label="Turn off mic"
-              >
-                <span class="block h-3.5 w-3.5 group-hover:hidden">
-                  <CheckIcon />
-                </span>
-                <span class="hidden h-2 w-2 group-hover:block text-red-500">
-                  <CloseIcon />
-                </span>
-              </button>
-            {/if}
-          </div>
-          <span>Mic</span>
-          <span class="text-[10px] font-medium uppercase tracking-wide { $micState.stream
-            ? 'text-emerald-500 dark:text-emerald-400'
-            : 'text-slate-400 dark:text-slate-500'}">
-            { $micState.stream ? 'On' : 'Off' }
-          </span>
-        </div>
-        <div class="flex flex-col items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-          <div class="relative h-12 w-12">
-            <WebcamButton />
-            {#if $webcamState.stream}
-              <button
-                type="button"
-                class="group absolute -top-1 -right-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-50 text-emerald-500 shadow-sm ring-1 ring-emerald-100 transition hover:bg-emerald-100 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/40 dark:hover:bg-emerald-500/20"
-                on:click={disableWebcam}
-                aria-label="Turn off webcam"
-              >
-                <span class="block h-3.5 w-3.5 group-hover:hidden">
-                  <CheckIcon />
-                </span>
-                <span class="hidden h-2 w-2 group-hover:block text-red-500">
-                  <CloseIcon />
-                </span>
-              </button>
-            {/if}
-          </div>
-          <span>Webcam</span>
-          <span class="text-[10px] font-medium uppercase tracking-wide { $webcamState.stream
-            ? 'text-emerald-500 dark:text-emerald-400'
-            : 'text-slate-400 dark:text-slate-500'}">
-            { $webcamState.stream ? 'On' : 'Off' }
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <div class="flex min-w-[260px] flex-1 flex-col gap-2">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-        Screen Sources
-      </p>
-      <div class="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200/70 bg-white/60 px-3 py-3 shadow-sm backdrop-blur dark:border-slate-800/70 dark:bg-slate-900/60">
-        {#each shares as share, index (share.id)}
-          <div class="flex flex-col items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-            <ShareButton share={share} {index} />
-            <span>Share {index + 1}</span>
-          </div>
-        {/each}
-        <div class="flex flex-col items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
-          <div class="h-12 w-12">
-            <ActionButton
-              on:click={handleAddScreenShare}
-              extraClasses="border-dashed border-slate-300/80 text-slate-500 hover:border-slate-400 hover:text-slate-700"
-              isSquareVariant
-            >
-              <div class="w-6 text-slate-500">
-                <DesktopIcon />
-              </div>
-            </ActionButton>
-          </div>
-          <span>Add</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="flex min-w-[160px] flex-col gap-2">
-      <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
-        Capture
-      </p>
-      <div class="flex w-full items-center justify-around">
-        {#if $recordingDuration !== null}
-          <div
-            class="min-w-[4.5rem] rounded-full border border-red-200/70 bg-white/90 px-3 py-1 text-center text-sm font-medium text-red-600 shadow-sm transition dark:border-red-500/40 dark:bg-red-500/20 dark:text-red-200"
-            transition:fade={{ duration: 300 }}
+<div class="flex items-center gap-6 px-8 py-5 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm dark:bg-slate-900 dark:border-slate-800">
+  <!-- Audio & Camera Group -->
+  <div class="flex items-center gap-4">
+    <div class="flex flex-col items-center gap-1.5">
+      <div class="relative flex items-center justify-center h-12 w-12">
+        <MicButton />
+        {#if $micState.stream}
+          <button
+            type="button"
+            class="absolute w-5 -top-2 -right-1.5 p-1.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shadow-sm z-10"
+            on:click={disableMic}
+            aria-label="Turn off mic"
           >
-            {$recordingDuration}
+            <CloseIcon />
+          </button>
+        {/if}
+      </div>
+      <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Mic</span>
+    </div>
+
+    <div class="flex flex-col items-center gap-1.5">
+      <div class="relative flex items-center justify-center h-12 w-12">
+        <WebcamButton />
+        {#if $webcamState.stream}
+          <button
+            type="button"
+            class="absolute w-5 -top-2 -right-1.5 p-1.5 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors shadow-sm z-10"
+            on:click={disableWebcam}
+            aria-label="Turn off webcam"
+          >
+            <CloseIcon />
+          </button>
+        {/if}
+      </div>
+      <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Cam</span>
+    </div>
+  </div>
+
+  <div class="w-px h-10 bg-slate-200 dark:bg-slate-700 mx-2"></div>
+
+  <!-- Screen Sources Group -->
+  <div class="flex items-center gap-4">
+    {#each shares as share, index (share.id)}
+      <div class="flex flex-col items-center gap-1.5">
+        <div class="flex items-center justify-center h-12 w-12" title="Share {index + 1}">
+          <ShareButton share={share} {index} />
+        </div>
+        <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Screen {index + 1}</span>
+      </div>
+    {/each}
+    
+    <div class="flex flex-col items-center gap-1.5">
+      <div class="h-12 w-12">
+        <ActionButton
+          on:click={handleAddScreenShare}
+          disabled={shares.length >= 1}
+          extraClasses="border-dashed border-slate-300 text-slate-500 hover:border-slate-400 hover:text-slate-700 dark:border-slate-600 dark:text-slate-400 dark:hover:border-slate-500 dark:hover:text-slate-200 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:border-slate-300 disabled:hover:text-slate-500"
+          isSquareVariant
+        >
+          <div class="w-6 text-current">
+            <DesktopIcon />
+          </div>
+        </ActionButton>
+      </div>
+      <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Add</span>
+    </div>
+  </div>
+
+  <div class="flex-1"></div>
+
+  <!-- Capture Group -->
+  <div class="flex items-center gap-5">
+    {#if $recordingDuration !== null}
+      <div
+        class="px-4 py-1.5 text-base font-medium text-red-600 bg-red-50 border border-red-200 rounded-full dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/30"
+        transition:fade={{ duration: 200 }}
+      >
+        {$recordingDuration}
+      </div>
+    {/if}
+
+    <div class="flex flex-col items-center gap-1.5">
+      <button
+        class="flex items-center justify-center h-12 w-12 rounded-xl border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 hover:text-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white disabled:opacity-70 disabled:cursor-not-allowed"
+        type="button"
+        on:click={exportPreviewScreenshot}
+        disabled={isTakingScreenshot}
+        title="Take Screenshot"
+        aria-label="Export screenshot"
+      >
+        {#if isTakingScreenshot}
+          <svg class="animate-spin h-5 w-5 text-slate-500 dark:text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+        {:else}
+          <div class="w-6 h-6">
+            <ScreenshotIcon />
           </div>
         {/if}
+      </button>
+      <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">Snap</span>
+    </div>
 
-        <button
-          class="group relative flex h-12 w-12 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 text-slate-600 shadow-sm transition hover:border-slate-300 hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-slate-700/80 dark:bg-slate-900/70 dark:text-slate-200"
-          type="button"
-          on:click={exportPreviewScreenshot}
-          aria-label="Export screenshot"
-        >
-          <ScreenshotIcon />
-          <span class="absolute -bottom-6 text-xs font-medium uppercase tracking-wide text-slate-400 group-hover:text-slate-500 dark:text-slate-500 dark:group-hover:text-slate-300">
-            Screenshot
-          </span>          
-        </button>
-
-        <button
-          class="group relative flex h-12 w-12 items-center justify-center rounded-full border-2 border-red-200 bg-red-500/90 text-white shadow-lg transition hover:bg-red-500 focus:outline-none focus-visible:ring-4 focus-visible:ring-red-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:border-red-500/60 dark:bg-red-500/80 dark:hover:bg-red-500 dark:focus-visible:ring-red-500/70 dark:focus-visible:ring-offset-slate-900"
-          on:click={() => {
-            dispatch("record");
-          }}
-          aria-label={$isRecording ? "Stop recording" : "Start recording"}
-        >
-          <div
-            class="transition-all duration-200 ease-out { $isRecording
-              ? 'h-4 w-4 rounded-[0.35rem] bg-white/90'
-              : 'h-7 w-7 rounded-full bg-white'}"
-          />
-          <span class="absolute -bottom-6 text-xs font-medium uppercase tracking-wide text-slate-400 group-hover:text-slate-500 dark:text-slate-500 dark:group-hover:text-slate-300">
-            {$isRecording ? 'Stop' : 'Record'}
-          </span>
-        </button>
-      </div>
+    <div class="flex flex-col items-center gap-1.5">
+      <button
+        class="flex items-center gap-3 px-6 py-3 rounded-xl font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-offset-2 transition-all text-base
+        { $isRecording 
+          ? 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 focus:ring-red-500 dark:bg-red-900/20 dark:text-red-400 dark:border-red-900/30 dark:hover:bg-red-900/30' 
+          : 'bg-red-600 text-white border border-red-600 hover:bg-red-700 focus:ring-red-500 shadow-red-100 dark:shadow-none' }"
+        on:click={() => {
+          dispatch("record");
+        }}
+        aria-label={$isRecording ? "Stop recording" : "Start recording"}
+      >
+        <div
+          class="transition-all duration-200 { $isRecording
+            ? 'h-4 w-4 rounded-[3px] bg-current'
+            : 'h-4 w-4 rounded-full bg-white'}"
+        />
+        <span>{$isRecording ? 'Stop' : 'Record'}</span>
+      </button>
+      <span class="text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 invisible">Label</span> <!-- Invisible spacer to align baseline -->
     </div>
   </div>
 </div>

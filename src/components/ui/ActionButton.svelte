@@ -10,6 +10,7 @@
   export let showPopupUnder: boolean = false;
   export let rightAlignPopup: boolean = false;
   export let isActive: boolean = false;
+  export let disabled: boolean = false;
 
   const dispatch = createEventDispatcher();
 </script>
@@ -41,6 +42,7 @@
     aria-pressed={isActive}
     data-active={isActive ? "true" : undefined}
     on:click
+    {disabled}
   >
     <slot />
   </button>
