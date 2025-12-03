@@ -59,6 +59,7 @@
     visible: false,
     kind: null,
     isPressed: false,
+    cursorShape: "default",
   };
   const POINTER_COLOR = "#f97316";
   let pointerIndicatorSize = 18;
@@ -138,7 +139,7 @@
   $: pointerState = computePointerState(videoCurrentTime, pointerRecords);
 
   $: recordingDurationSeconds = $lastRecording ? Math.max(0, $lastRecording.duration / 1000) : 0;
-  $: timelineDuration = videoDuration;
+  $: timelineDuration = videoDuration > 0 ? videoDuration : recordingDurationSeconds;
 
   const clamp = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value));
@@ -493,7 +494,10 @@
 
     const pointerLeft = videoFrameOffsetLeft + placementX * scaleX;
     const pointerTop = videoFrameOffsetTop + placementY * scaleY;
-    const pointerSourceIcon = pointerState.isPressed
+    
+    const cursorShape = pointerState.cursorShape || "default";
+    const usePointerIcon = cursorShape === "pointer" || pointerState.isPressed;
+    const pointerSourceIcon = usePointerIcon
       ? pointerIconPressedUrl ?? pointerIconUrl
       : pointerIconUrl;
     const pointerHasIcon = Boolean(pointerSourceIcon);
@@ -502,20 +506,16 @@
 
     const pointerShouldShow =
       includePointerTrack &&
-      pointerState.kind !== null &&
+      pointerState.visible &&
       videoFrameWidth > 0 &&
       videoFrameHeight > 0 &&
       scaleX > 0 &&
       scaleY > 0;
 
     pointerStyle = pointerShouldShow
-      ? `left: ${pointerLeft}px; top: ${pointerTop}px; opacity: 1; --pointer-size: ${clamp(
-          pointerIndicatorSize,
-          6,
-          64
-        )}px; --pointer-color: ${POINTER_COLOR}; --pointer-shadow: ${pointerShadow}; --pointer-icon: ${
+      ? `left: ${pointerLeft}px; top: ${pointerTop}px; opacity: 1; --pointer-size: ${pointerIndicatorSize}px; --pointer-color: ${POINTER_COLOR}; --pointer-shadow: ${pointerShadow}; --pointer-icon: ${
           pointerSourceIcon ?? "none"
-        }; --pointer-background: ${pointerBackground}; --pointer-border-radius: ${pointerBorderRadius};`
+        }; --pointer-background: ${pointerBackground}; --pointer-border-radius: ${pointerBorderRadius}; --cursor-shape: ${cursorShape};`
       : "opacity: 0;";
   }
 
@@ -656,6 +656,10 @@
   onZipPointerFileChange={handleZipPointerFile}
   {clickEvents}
   {sortedClickEvents}
+  {pointerRecords}
+  {pointerIconImageUrl}
+  {pointerIconPressedImageUrl}
+  {pointerIndicatorSize}
   bind:videoDuration={videoDuration}
   bind:videoCurrentTime={videoCurrentTime}
   bind:screenWidth={recordedScreenWidth}

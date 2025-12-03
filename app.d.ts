@@ -41,6 +41,7 @@ declare global {
     normalizedY: number;
     buttonState: string; // "none", "left_down", "left_up", "right_down", "right_up", "middle_down", "middle_up"
     isPressed: boolean;
+    cursorShape: string; // cursor shape name: "default", "pointer", "text", "crosshair", etc.
   }
 
   interface NativeRecordingOptions {

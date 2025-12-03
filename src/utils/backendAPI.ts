@@ -295,6 +295,7 @@ export interface NativeMouseEvent {
   normalizedY: number;
   buttonState: string; // "none", "left_down", "left_up", "right_down", "right_up", "middle_down", "middle_up"
   isPressed: boolean;
+  cursorShape: string; // "default", "pointer", "text", "crosshair", "move", "wait", etc.
 }
 
 export const getRecordingMouseEvents = async (): Promise<NativeMouseEvent[]> => {

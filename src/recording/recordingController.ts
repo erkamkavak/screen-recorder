@@ -212,6 +212,7 @@ const mapNativeMouseEventsToPointerRecords = (
       x: e.normalizedX,
       y: e.normalizedY,
       button,
+      cursorShape: e.cursorShape || "default",
     };
   });
   pointerRecords.sort((a, b) => a.t - b.t);
@@ -226,6 +227,7 @@ const mapNativeMouseEventsToPointerRecords = (
         x: event.x,
         y: event.y,
         button: event.button,
+        cursorShape: event.cursorShape,
       });
     }
   }

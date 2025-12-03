@@ -51,6 +51,7 @@ export type PointerEventRecord = {
   x?: number;
   y?: number;
   button?: number;
+  cursorShape?: string; // "default", "pointer", "text", "crosshair", "move", "wait", etc.
 };
 export type KeyEventRecord = {
   kind: "keydown" | "keyup";

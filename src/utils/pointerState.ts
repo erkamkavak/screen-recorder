@@ -8,6 +8,7 @@ export type ComputedPointerState = {
   visible: boolean;
   kind: PointerEventRecord["kind"] | null;
   isPressed: boolean;
+  cursorShape: string;
 };
 
 export const getPointerRecords = (events: InputEventRecord[] | null | undefined): PointerEventRecord[] =>
@@ -26,7 +27,7 @@ export const computePointerState = (
   bufferMs = pointerBufferMs
 ): ComputedPointerState => {
   if (!events.length) {
-    return { x: 0.5, y: 0.5, visible: false, kind: null, isPressed: false };
+    return { x: 0.5, y: 0.5, visible: false, kind: null, isPressed: false, cursorShape: "default" };
   }
 
   const targetTime = Math.max(0, time) * 1000;
@@ -62,9 +63,10 @@ export const computePointerState = (
         visible: true,
         kind: nextEvent.kind,
         isPressed,
+        cursorShape: nextEvent.cursorShape || "default",
       };
     }
-    return { x: 0.5, y: 0.5, visible: false, kind: null, isPressed };
+    return { x: 0.5, y: 0.5, visible: false, kind: null, isPressed, cursorShape: "default" };
   }
 
   // Interpolate between lastEvent and nextEvent for smoother movement
@@ -93,5 +95,6 @@ export const computePointerState = (
     visible: isVisible,
     kind: lastEvent.kind,
     isPressed,
+    cursorShape: lastEvent.cursorShape || "default",
   };
 };
