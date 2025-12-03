@@ -560,6 +560,7 @@
   .toolbar-btn.primary:hover:not(:disabled) {
     background: #1e293b; /* Slate 800 */
     border-color: #1e293b;
+    color: #f9fafb;
   }
 
   .toolbar-btn.primary.active {
@@ -720,6 +721,8 @@
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
     z-index: 20;
     white-space: nowrap;
+    min-width: 78px;
+    text-align: center;
   }
   
   .click-tooltip::after {

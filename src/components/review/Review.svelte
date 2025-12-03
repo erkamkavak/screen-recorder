@@ -15,6 +15,7 @@
   } from "../../stores";
   import type { TimelineSnapshot } from "../../stores/timeline";
   import { humanDuration } from "./helpers";
+  import { onDestroy, onMount } from "svelte";
 
   export let lastRecording: LastRecording = null;
   export let assets: RecordingAssets | null = null;
@@ -61,20 +62,113 @@
   export let addZoomForClick: (event: PointerEventRecord) => void;
   export let timelineDuration = 0;
 
+  const minPreviewWidth = 1080;
+  const minAsideWidth = 320;
+  const resizeGutter = 16;
+
+  let reviewRootEl: HTMLDivElement | null = null;
+  let previewWidthPx = 1080;
+  let asideWidthPx = minAsideWidth;
+  let isResizing = false;
+  let rootResizeObserver: ResizeObserver | null = null;
+
+  const clampBetween = (value: number, minValue: number, maxValue: number) =>
+    Math.max(minValue, Math.min(value, maxValue));
+
+  const computeLayoutSizes = (rootWidth: number, requestedPreview?: number) => {
+    const safeRootWidth = Math.max(rootWidth, 0);
+    const minTotal = minPreviewWidth + minAsideWidth + resizeGutter;
+
+    if (safeRootWidth <= minTotal) {
+      const available = Math.max(safeRootWidth - resizeGutter, 0);
+      const previewRatio = minPreviewWidth / (minPreviewWidth + minAsideWidth);
+      const preview = available * previewRatio;
+      const aside = available - preview;
+      previewWidthPx = Math.max(preview, 0);
+      asideWidthPx = Math.max(aside, 0);
+      return;
+    }
+
+    const suggestedPreview = requestedPreview ?? Math.max(minPreviewWidth, safeRootWidth * 0.7);
+    const maxPreview = Math.max(safeRootWidth - minAsideWidth - resizeGutter, minPreviewWidth);
+    const preview = clampBetween(suggestedPreview, minPreviewWidth, maxPreview);
+    const maxAsideWidth = Math.max(safeRootWidth - minPreviewWidth - resizeGutter, minAsideWidth);
+    const aside = clampBetween(safeRootWidth - preview - resizeGutter, minAsideWidth, maxAsideWidth);
+    previewWidthPx = preview;
+    asideWidthPx = aside;
+  };
+
+  const updateRootWidth = () => {
+    if (isResizing || !reviewRootEl) return;
+    const rect = reviewRootEl.getBoundingClientRect();
+    const styles = getComputedStyle(reviewRootEl);
+    const paddingLeft = parseFloat(styles.paddingLeft || "0");
+    const paddingRight = parseFloat(styles.paddingRight || "0");
+    const innerWidth = rect.width - paddingLeft - paddingRight;
+    computeLayoutSizes(innerWidth);
+  };
+
+  const handleResizeMove = (event: PointerEvent) => {
+    if (!reviewRootEl) return;
+    const rect = reviewRootEl.getBoundingClientRect();
+    const styles = getComputedStyle(reviewRootEl);
+    const paddingLeft = parseFloat(styles.paddingLeft || "0");
+    const paddingRight = parseFloat(styles.paddingRight || "0");
+    const innerWidth = rect.width - paddingLeft - paddingRight;
+    const targetWidth = event.clientX - rect.left - paddingLeft;
+    computeLayoutSizes(innerWidth, targetWidth);
+  };
+
+  const stopResize = () => {
+    if (!isResizing) return;
+    isResizing = false;
+    window.removeEventListener("pointermove", handleResizeMove);
+    window.removeEventListener("pointerup", stopResize);
+  };
+
+  const startResize = (event: PointerEvent) => {
+    event.preventDefault();
+    isResizing = true;
+    window.addEventListener("pointermove", handleResizeMove);
+    window.addEventListener("pointerup", stopResize);
+  };
+
   $: hasWebcam = !!assets?.webcam;
   $: hasAudio = !!assets?.audio;
 
   $: if (!hasWebcam) includeWebcamTrack = false;
   $: if (!hasAudio) includeAudioTrack = false;
+
+  onMount(() => {
+    updateRootWidth();
+    const handleWindowResize = () => updateRootWidth();
+    window.addEventListener("resize", handleWindowResize);
+    rootResizeObserver = new ResizeObserver(updateRootWidth);
+    if (reviewRootEl) {
+      rootResizeObserver.observe(reviewRootEl);
+    }
+    return () => {
+      window.removeEventListener("resize", handleWindowResize);
+      rootResizeObserver?.disconnect();
+    };
+  });
+
+  onDestroy(() => {
+    stopResize();
+    rootResizeObserver?.disconnect();
+  });
 </script>
 
 {#if lastRecording && assets}
-  <div class="review-root">
-    <section class="review-main">
+  <div class="review-root" bind:this={reviewRootEl}>
+    <section
+      class="review-main"
+      style={`flex: 0 0 ${previewWidthPx}px; width: ${previewWidthPx}px;`}
+    >
       <article class="playback-card plain">
         <header class="panel-header">
           <div>
-            <h2>Playback</h2>
+            <h2>Review</h2>
             <p>Use the timeline to scrub. The screen asset plays back directly with a live pointer overlay.</p>
           </div>
         </header>
@@ -114,10 +208,14 @@
         />
       </article>
     </section>
-
-    <aside class="review-aside">
-      <h1>Export options</h1>
-      <p class="aside-text">Control the preview and export, then download the edited video.</p>
+    <div
+      class={`review-resize-handle ${isResizing ? "is-resizing" : ""}`}
+      aria-hidden="true"
+      on:pointerdown={startResize}
+    />
+    <aside class="review-aside" style={`width: ${asideWidthPx}px;`}>
+      <h1>Render options</h1>
+      <p class="aside-text">Control the render, then download it as a video file.</p>
 
       <div class="toggle-group">
         <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includePointerTrack} /> <span>Include pointer</span></label>
@@ -146,7 +244,7 @@
           {#if isRenderingVideo}
             Rendering… {renderProgress}%
           {:else}
-            Download edited video
+            Render and download
           {/if}
         </button>
         <button class="secondary" on:click={resetToRecorder}>Back to recorder</button>
@@ -170,18 +268,24 @@
 <style>
   .review-root {
     display: flex;
-    gap: 2rem;
+    gap: 0.5rem;
     padding: 1rem 2rem 2rem;
     background: #f6f7fb;
     min-height: 100vh;
     box-sizing: border-box;
+    align-items: stretch;
+    max-width: 100%;
+    overflow-x: hidden;
   }
 
   .review-main {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     display: flex;
     flex-direction: column;
     gap: 1.5rem;
+    max-width: 100%;
+    min-width: 0;
+    padding-right: 0.5rem;
   }
 
   .playback-card {
@@ -221,8 +325,9 @@
     min-height: 0;
   }
   .player-frame.narrow {
-    max-width: 980px;
-    margin: 0 auto;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
   }
 
   .pointer-indicator {
@@ -241,7 +346,8 @@
   }
 
   .review-aside {
-    width: 22rem;
+    flex: 0 0 auto;
+    min-width: 20rem;
     border-radius: 18px;
     border: 1px solid #e5e7eb;
     padding: 1.5rem;
@@ -253,6 +359,40 @@
     position: sticky;
     top: 1.5rem;
     align-self: flex-start;
+  }
+
+  .review-resize-handle {
+    width: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: ew-resize;
+    position: relative;
+    align-self: stretch;
+    margin: 0 0.5rem;
+  }
+
+  .review-resize-handle::before {
+    content: "";
+    width: 2px;
+    height: 70%;
+    border-radius: 999px;
+    background: linear-gradient(180deg, #cbd5e1, #f97316, #cbd5e1);
+    opacity: 0.5;
+    transition: opacity 0.2s ease;
+  }
+
+  .review-resize-handle.is-resizing::before {
+    opacity: 1;
+  }
+
+  .review-resize-handle::after {
+    content: "";
+    position: absolute;
+    left: -8px;
+    right: -8px;
+    top: 0;
+    bottom: 0;
   }
 
   .toggle-group { display: grid; gap: 0.5rem; }
@@ -376,11 +516,24 @@
   @media (max-width: 1024px) {
     .review-root {
       flex-direction: column;
+      gap: 2rem;
+    }
+
+    .review-main {
+      flex: 1 1 auto !important;
+      width: auto !important;
+      padding-right: 0;
     }
 
     .review-aside {
       position: static;
-      width: 100%;
+      width: auto !important;
+      flex: 1 1 auto;
+      margin-right: 0;
+    }
+
+    .review-resize-handle {
+      display: none;
     }
   }
 
