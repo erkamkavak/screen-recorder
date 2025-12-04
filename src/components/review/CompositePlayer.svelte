@@ -310,8 +310,9 @@
       : pointerIconImage;
     
     if (icon) {
-      const size = pointerIndicatorSize * 5;
-      ctx.drawImage(icon, pointerX - size / 2, pointerY - Math.floor(2 * size / 3), size, size);
+      const POINTER_RENDER_SCALE = 5;
+      const size = pointerIndicatorSize * POINTER_RENDER_SCALE;
+      ctx.drawImage(icon, pointerX, pointerY, size, size);
     } else {
       // Fallback to drawn cursor
       ctx.fillStyle = cursorShape === "pointer" ? "#000000" : "#ffffff";
