@@ -572,11 +572,11 @@
     : [];
   $: sortedClickEvents = [...clickEvents].sort((a, b) => a.t - b.t);
 
-  const addZoomForClick = (clickEvent: PointerEventRecord) => {
+  const addZoomForClick = (clickEvent: PointerEventRecord, seconds?: number) => {
     const duration = Math.max(timelineDuration, 0);
     if (duration <= 0) return;
 
-    const timestampSeconds = clampToTimelineDuration(clickEvent.t / 1000);
+    const timestampSeconds = clampToTimelineDuration(seconds ?? clickEvent.t / 1000);
     const existingZoom = findZoomEventForTime($timelineStore.events, timestampSeconds);
     if (existingZoom) {
       timelineStore.selectEvent(existingZoom.id);

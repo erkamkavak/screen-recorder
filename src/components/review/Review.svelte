@@ -69,7 +69,7 @@
   export let playerFrameEl: HTMLDivElement | null = null;
   export let downloadEditedVideo: () => Promise<void>;
   export let resetToRecorder: () => void;
-  export let addZoomForClick: (event: PointerEventRecord) => void;
+  export let addZoomForClick: (event: PointerEventRecord, seconds?: number) => void;
   export let timelineDuration = 0;
 
   const minPreviewWidth = 1080;

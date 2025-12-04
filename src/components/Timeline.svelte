@@ -7,7 +7,7 @@
   export let duration = 0;
   export let currentTime = 0;
   export let clickEvents: PointerEventRecord[] = [];
-  export let onAddZoomForClick: ((clickEvent: PointerEventRecord) => void) | null = null;
+  export let onAddZoomForClick: ((clickEvent: PointerEventRecord, seconds?: number) => void) | null = null;
 
   let zoomDraft = false;
   let trackEl: HTMLDivElement | null = null;
@@ -31,14 +31,6 @@
   let selectedClickIndex: number | null = null;
   let hoveredClickEvent: PointerEventRecord | null = null;
 
-  $: canUndo = $timelineStore.historyIndex > 0;
-  $: canRedo = $timelineStore.historyIndex < $timelineStore.history.length - 1;
-  $: trimStart = $timelineStore.trimStart;
-  $: trimEnd = $timelineStore.trimEnd ?? duration;
-  $: timeMarkers = duration > 0
-    ? Array.from({ length: Math.ceil(duration / 5) + 1 }, (_, index) => index * 5)
-    : [];
-
   const clampTime = (time: number) => Math.max(0, Math.min(duration, time));
 
   const getPositionPercent = (seconds: number) => {
@@ -61,8 +53,22 @@
     return `${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
   };
 
+  $: canUndo = $timelineStore.historyIndex > 0;
+  $: canRedo = $timelineStore.historyIndex < $timelineStore.history.length - 1;
+  $: trimStart = $timelineStore.trimStart;
+  $: trimEnd = $timelineStore.trimEnd ?? duration;
+  $: timeMarkers = duration > 0
+    ? Array.from({ length: Math.ceil(duration / 5) + 1 }, (_, index) => index * 5)
+    : [];
+  type ClickMarker = { event: PointerEventRecord; seconds: number };
+  $: orderedClickEvents = [...clickEvents].sort((a, b) => a.t - b.t);
+  $: clickMarkers = orderedClickEvents.map((event) => ({
+    event,
+    seconds: clampTime(event.t / 1000),
+  }));
+
   const focusForTime = (seconds: number) => {
-    const events = pointerSeries(clickEvents);
+    const events = pointerSeries(clickMarkers.map((marker) => marker.event));
     if (!events.length) return { x: 0.5, y: 0.5 };
 
     const target = clampTime(seconds);
@@ -218,15 +224,15 @@
     optimisticEvent = null;
   };
 
-  const handleClickMarker = (index: number, clickEvent: PointerEventRecord) => {
-    const seconds = clampTime(clickEvent.t / 1000);
+  const handleClickMarker = (index: number, marker: ClickMarker) => {
+    const seconds = marker.seconds;
     const existingZoom = findZoomEventForTime($timelineStore.events, seconds);
     if (existingZoom) {
       timelineStore.selectEvent(existingZoom.id);
       return;
     }
     selectedClickIndex = index;
-    onAddZoomForClick?.(clickEvent);
+    onAddZoomForClick?.(marker.event, seconds);
     selectedClickIndex = null;
   };
 
@@ -398,8 +404,8 @@
     ></button>
 
     <div class="click-lines-layer">
-      {#each clickEvents as clickEvent, index}
-        {@const seconds = clampTime(clickEvent.t / 1000)}
+      {#each clickMarkers as marker, index}
+        {@const seconds = marker.seconds}
         {@const clickZoomEvent = findZoomEventForTime($timelineStore.events, seconds)}
         <button
           type="button"
@@ -408,18 +414,18 @@
           class:selected={selectedClickIndex === index}
           style={`left: ${getPositionPercent(seconds)}%`}
           on:pointerenter={() => {
-            hoveredClickEvent = clickEvent;
+            hoveredClickEvent = marker.event;
           }}
           on:pointerleave={() => {
             hoveredClickEvent = null;
           }}
           on:click={(event) => {
             event.stopPropagation();
-            handleClickMarker(index, clickEvent);
+            handleClickMarker(index, marker);
           }}
           title={`Click at ${formatTime(seconds)}`}
         >
-          {#if hoveredClickEvent === clickEvent}
+          {#if hoveredClickEvent === marker.event}
             <div class="click-tooltip">
               <span>{clickZoomEvent ? "Zoom already added" : "Add zoom"}</span>
             </div>
