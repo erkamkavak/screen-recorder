@@ -10,6 +10,8 @@ export interface FrameData {
   buffer: Buffer
   mouseX?: number
   mouseY?: number
+  originX: number
+  originY: number
 }
 export interface DesktopSource {
   id: string

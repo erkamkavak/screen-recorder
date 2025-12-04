@@ -1,11 +1,14 @@
 #![deny(clippy::all)]
 
+use mouse_position::mouse_position::Mouse;
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use parking_lot::Mutex;
+use rdev::{listen, Button, Event, EventType};
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::{
-    env,
-    fs,
+    env, fs,
     io::Write,
     path::PathBuf,
     process::{Command, Stdio},
@@ -14,13 +17,17 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 use tokio::sync::{broadcast, mpsc, oneshot};
-use mouse_position::mouse_position::Mouse;
-use rdev::{listen, Event, EventType, Button};
 use xcap::{Monitor, Window};
 
 mod cursor_shape;
 
 const RECORDING_DIR_NAME: &str = "clips-recordings";
+const MAX_I32_AS_U32: u32 = i32::MAX as u32;
+
+fn clamp_coordinate(value: i32, origin: i32, limit: u32) -> i32 {
+    let max_coord = limit.min(MAX_I32_AS_U32) as i32;
+    (value - origin).clamp(0, max_coord)
+}
 
 // Frame data structure for NAPI
 #[napi(object)]
@@ -32,6 +39,8 @@ pub struct FrameData {
     pub buffer: Buffer,
     pub mouse_x: Option<i32>,
     pub mouse_y: Option<i32>,
+    pub origin_x: i32,
+    pub origin_y: i32,
 }
 
 // Desktop source info
@@ -63,6 +72,8 @@ struct InternalFrame {
     pixels: Vec<u8>,
     mouse_x: Option<i32>,
     mouse_y: Option<i32>,
+    origin_x: i32,
+    origin_y: i32,
 }
 
 // Helper to get current mouse position
@@ -102,7 +113,7 @@ pub struct MouseEventRecord {
     pub normalized_x: f64,
     pub normalized_y: f64,
     pub button_state: String, // "none", "left_down", "left_up", "right_down", "right_up", "middle_down", "middle_up"
-    pub is_pressed: bool, // true if any button is currently pressed
+    pub is_pressed: bool,     // true if any button is currently pressed
     pub cursor_shape: String, // cursor shape name: "default", "pointer", "text", "crosshair", etc.
 }
 
@@ -146,6 +157,8 @@ struct CaptureState {
     // Cached screen dimensions for normalization
     current_screen_width: u32,
     current_screen_height: u32,
+    current_origin_x: i32,
+    current_origin_y: i32,
 }
 
 impl Default for CaptureState {
@@ -167,6 +180,8 @@ impl Default for CaptureState {
             last_button_state: MouseButtonState::None,
             current_screen_width: 1920,
             current_screen_height: 1080,
+            current_origin_x: 0,
+            current_origin_y: 0,
         }
     }
 }
@@ -191,7 +206,7 @@ fn start_mouse_button_listener() {
     }
     *started = true;
     drop(started);
-    
+
     thread::spawn(|| {
         let callback = |event: Event| {
             let mut state = CAPTURE_STATE.lock();
@@ -213,7 +228,7 @@ fn start_mouse_button_listener() {
                         _ => MouseButtonState::None,
                     };
                     state.last_button_state = button_state;
-                    
+
                     // If recording, add a click event
                     if state.recording_frame_tx.is_some() {
                         let (mouse_x, mouse_y) = get_mouse_position();
@@ -222,21 +237,27 @@ fn start_mouse_button_listener() {
                                 .duration_since(UNIX_EPOCH)
                                 .map(|d| d.as_millis() as u64)
                                 .unwrap_or(0);
-                            
+
                             // Use cached screen dimensions for consistent normalization
                             let sw = state.current_screen_width;
                             let sh = state.current_screen_height;
-                            
+                            let origin_x = state.current_origin_x;
+                            let origin_y = state.current_origin_y;
+
                             // Compute is_pressed before pushing to avoid borrow issues
-                            let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
+                            let is_pressed = state.left_button_pressed
+                                || state.right_button_pressed
+                                || state.middle_button_pressed;
                             // Get cursor shape (release lock temporarily to avoid deadlock)
                             drop(state);
                             let cursor_shape = cursor_shape::get_cursor_shape();
                             let mut state = CAPTURE_STATE.lock();
+                            let local_x = clamp_coordinate(mx, origin_x, sw);
+                            let local_y = clamp_coordinate(my, origin_y, sh);
                             state.mouse_events.push(InternalMouseEvent {
                                 timestamp_unix_ms: timestamp,
-                                x: mx,
-                                y: my,
+                                x: local_x,
+                                y: local_y,
                                 screen_width: sw,
                                 screen_height: sh,
                                 button_state,
@@ -263,7 +284,7 @@ fn start_mouse_button_listener() {
                         _ => MouseButtonState::None,
                     };
                     state.last_button_state = button_state;
-                    
+
                     // If recording, add a release event
                     if state.recording_frame_tx.is_some() {
                         let (mouse_x, mouse_y) = get_mouse_position();
@@ -272,21 +293,27 @@ fn start_mouse_button_listener() {
                                 .duration_since(UNIX_EPOCH)
                                 .map(|d| d.as_millis() as u64)
                                 .unwrap_or(0);
-                            
+
                             // Use cached screen dimensions for consistent normalization
                             let sw = state.current_screen_width;
                             let sh = state.current_screen_height;
-                            
+                            let origin_x = state.current_origin_x;
+                            let origin_y = state.current_origin_y;
+
                             // Compute is_pressed before pushing to avoid borrow issues
-                            let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
+                            let is_pressed = state.left_button_pressed
+                                || state.right_button_pressed
+                                || state.middle_button_pressed;
                             // Get cursor shape (release lock temporarily to avoid deadlock)
                             drop(state);
                             let cursor_shape = cursor_shape::get_cursor_shape();
                             let mut state = CAPTURE_STATE.lock();
+                            let local_x = clamp_coordinate(mx, origin_x, sw);
+                            let local_y = clamp_coordinate(my, origin_y, sh);
                             state.mouse_events.push(InternalMouseEvent {
                                 timestamp_unix_ms: timestamp,
-                                x: mx,
-                                y: my,
+                                x: local_x,
+                                y: local_y,
                                 screen_width: sw,
                                 screen_height: sh,
                                 button_state,
@@ -299,7 +326,7 @@ fn start_mouse_button_listener() {
                 _ => {}
             }
         };
-        
+
         // This blocks forever, listening for events
         if let Err(e) = listen(callback) {
             eprintln!("rdev listen error: {:?}", e);
@@ -337,7 +364,7 @@ fn capture_monitor_frame_internal(monitor_id: &str) -> std::result::Result<Inter
 
     // Capture mouse position at the same instant as the frame
     let (mouse_x, mouse_y) = get_mouse_position();
-    
+
     let image = monitor.capture_image().map_err(|e| e.to_string())?;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -351,6 +378,8 @@ fn capture_monitor_frame_internal(monitor_id: &str) -> std::result::Result<Inter
         pixels: image.to_vec(),
         mouse_x,
         mouse_y,
+        origin_x: 0,
+        origin_y: 0,
     })
 }
 
@@ -369,12 +398,15 @@ fn capture_window_frame_internal(window_id: &str) -> std::result::Result<Interna
 
     // Capture mouse position at the same instant as the frame
     let (mouse_x, mouse_y) = get_mouse_position();
-    
+
     let image = window.capture_image().map_err(|e| e.to_string())?;
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_| "System time error".to_string())?
         .as_millis() as u64;
+
+    let origin_x = window.x().map_err(|e| e.to_string())?;
+    let origin_y = window.y().map_err(|e| e.to_string())?;
 
     Ok(InternalFrame {
         width: image.width(),
@@ -383,6 +415,8 @@ fn capture_window_frame_internal(window_id: &str) -> std::result::Result<Interna
         pixels: image.to_vec(),
         mouse_x,
         mouse_y,
+        origin_x,
+        origin_y,
     })
 }
 
@@ -401,25 +435,32 @@ pub fn list_sources() -> Result<Vec<DesktopSource>> {
     // List monitors
     if let Ok(monitors) = Monitor::all() {
         for (index, monitor) in monitors.iter().enumerate() {
-            let name = monitor.name().unwrap_or_else(|_| format!("Monitor {}", index));
-            
+            let name = monitor
+                .name()
+                .unwrap_or_else(|_| format!("Monitor {}", index));
+
             // Capture thumbnail
-            let thumbnail = monitor
-                .capture_image()
-                .ok()
-                .and_then(|img| {
-                    use base64::{engine::general_purpose, Engine as _};
-                    use image::{DynamicImage, ImageOutputFormat};
-                    use std::io::Cursor;
+            let thumbnail = monitor.capture_image().ok().and_then(|img| {
+                use base64::{engine::general_purpose, Engine as _};
+                use image::{DynamicImage, ImageOutputFormat};
+                use std::io::Cursor;
 
-                    let thumb = DynamicImage::ImageRgba8(
-                        image::ImageBuffer::from_raw(img.width(), img.height(), img.to_vec())?
-                    ).thumbnail(480, 270);
+                let thumb = DynamicImage::ImageRgba8(image::ImageBuffer::from_raw(
+                    img.width(),
+                    img.height(),
+                    img.to_vec(),
+                )?)
+                .thumbnail(480, 270);
 
-                    let mut encoded = Vec::new();
-                    thumb.write_to(&mut Cursor::new(&mut encoded), ImageOutputFormat::Png).ok()?;
-                    Some(format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&encoded)))
-                });
+                let mut encoded = Vec::new();
+                thumb
+                    .write_to(&mut Cursor::new(&mut encoded), ImageOutputFormat::Png)
+                    .ok()?;
+                Some(format!(
+                    "data:image/png;base64,{}",
+                    general_purpose::STANDARD.encode(&encoded)
+                ))
+            });
 
             sources.push(DesktopSource {
                 id: format!("monitor:{}", index),
@@ -435,27 +476,32 @@ pub fn list_sources() -> Result<Vec<DesktopSource>> {
         for window in windows {
             let id = window.id().unwrap_or(0);
             let name = window.title().unwrap_or_else(|_| "Unknown".to_string());
-            
+
             if name.is_empty() {
                 continue;
             }
 
-            let thumbnail = window
-                .capture_image()
-                .ok()
-                .and_then(|img| {
-                    use base64::{engine::general_purpose, Engine as _};
-                    use image::{DynamicImage, ImageOutputFormat};
-                    use std::io::Cursor;
+            let thumbnail = window.capture_image().ok().and_then(|img| {
+                use base64::{engine::general_purpose, Engine as _};
+                use image::{DynamicImage, ImageOutputFormat};
+                use std::io::Cursor;
 
-                    let thumb = DynamicImage::ImageRgba8(
-                        image::ImageBuffer::from_raw(img.width(), img.height(), img.to_vec())?
-                    ).thumbnail(480, 270);
+                let thumb = DynamicImage::ImageRgba8(image::ImageBuffer::from_raw(
+                    img.width(),
+                    img.height(),
+                    img.to_vec(),
+                )?)
+                .thumbnail(480, 270);
 
-                    let mut encoded = Vec::new();
-                    thumb.write_to(&mut Cursor::new(&mut encoded), ImageOutputFormat::Png).ok()?;
-                    Some(format!("data:image/png;base64,{}", general_purpose::STANDARD.encode(&encoded)))
-                });
+                let mut encoded = Vec::new();
+                thumb
+                    .write_to(&mut Cursor::new(&mut encoded), ImageOutputFormat::Png)
+                    .ok()?;
+                Some(format!(
+                    "data:image/png;base64,{}",
+                    general_purpose::STANDARD.encode(&encoded)
+                ))
+            });
 
             sources.push(DesktopSource {
                 id: format!("window:{}", id),
@@ -490,7 +536,10 @@ pub fn start_capture(options: RecordingOptions) -> Result<()> {
     state.target = Some(target.clone());
     state.frame_tx = Some(frame_tx.clone());
     state.stop_tx = Some(stop_tx);
-    eprintln!("Starting capture with target: {}, frame_rate: {}", target.id, state.frame_rate);
+    eprintln!(
+        "Starting capture with target: {}, frame_rate: {}",
+        target.id, state.frame_rate
+    );
 
     let frame_rate = state.frame_rate;
     let capture_target = target.clone();
@@ -516,30 +565,34 @@ pub fn start_capture(options: RecordingOptions) -> Result<()> {
                         // If a recording session is active, feed the recorder queue and store mouse events
                         let (rec_tx, screen_dims) = {
                             let mut state = CAPTURE_STATE.lock();
-                            
-                            // Update cached dimensions from current frame
+
+                            // Update cached dimensions and origin from current frame
                             state.current_screen_width = frame_data.width;
                             state.current_screen_height = frame_data.height;
+                            state.current_origin_x = frame_data.origin_x;
+                            state.current_origin_y = frame_data.origin_y;
 
                             (
                                 state.recording_frame_tx.clone(),
                                 state.target.as_ref().map(|_| (frame_data.width, frame_data.height)),
                             )
                         };
-                        
+
                         if let Some(rec_tx) = rec_tx {
                             // Store mouse event with frame-aligned timestamp
-                            if let (Some(mx), Some(my), Some((sw, sh))) = 
-                                (frame_data.mouse_x, frame_data.mouse_y, screen_dims) 
+                            if let (Some(mx), Some(my), Some((sw, sh))) =
+                                (frame_data.mouse_x, frame_data.mouse_y, screen_dims)
                             {
                                 // Get cursor shape before acquiring lock
                                 let cursor_shape = cursor_shape::get_cursor_shape();
                                 let mut state = CAPTURE_STATE.lock();
                                 let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
+                                let local_x = clamp_coordinate(mx, frame_data.origin_x, sw);
+                                let local_y = clamp_coordinate(my, frame_data.origin_y, sh);
                                 state.mouse_events.push(InternalMouseEvent {
                                     timestamp_unix_ms: frame_data.timestamp_ms,
-                                    x: mx,
-                                    y: my,
+                                    x: local_x,
+                                    y: local_y,
                                     screen_width: sw,
                                     screen_height: sh,
                                     button_state: MouseButtonState::None, // Position events don't have button state
@@ -547,7 +600,7 @@ pub fn start_capture(options: RecordingOptions) -> Result<()> {
                                     cursor_shape,
                                 });
                             }
-                            
+
                             if let Err(err) = rec_tx.try_send(frame_data) {
                                 match err {
                                     mpsc::error::TrySendError::Full(_) => {
@@ -632,6 +685,8 @@ pub async fn poll_frame() -> Result<Option<FrameData>> {
             buffer: Buffer::from(frame.pixels),
             mouse_x: frame.mouse_x,
             mouse_y: frame.mouse_y,
+            origin_x: frame.origin_x,
+            origin_y: frame.origin_y,
         })),
         Err(_) => Ok(None),
     }
@@ -665,7 +720,7 @@ pub fn start_recording(options: RecordingOptions) -> Result<String> {
 
     // Start the mouse button listener (if not already running)
     start_mouse_button_listener();
-    
+
     // Set recording file path and initialize mouse event tracking
     let start_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -717,8 +772,7 @@ fn start_ffmpeg_recording_internal(
     };
 
     // Get initial frame for dimensions
-    let first_frame = capture_frame_for_target(&target)
-        .map_err(|e| Error::from_reason(e))?;
+    let first_frame = capture_frame_for_target(&target).map_err(|e| Error::from_reason(e))?;
 
     let width = first_frame.width;
     let height = first_frame.height;
@@ -741,28 +795,47 @@ fn start_ffmpeg_recording_internal(
             .map_err(|e| format!("Failed to create runtime: {}", e))?;
 
         rt.block_on(async move {
-            let mut child = Command::new("ffmpeg")
+            let mut command = Command::new("ffmpeg");
+            command
                 .args([
                     "-y",
-                    "-f", "rawvideo",
-                    "-pixel_format", "rgba",
-                    "-video_size", &size_arg,
-                    "-framerate", &fps_arg,
-                    "-thread_queue_size", "512",
-                    "-i", "-",
+                    "-f",
+                    "rawvideo",
+                    "-pixel_format",
+                    "rgba",
+                    "-video_size",
+                    &size_arg,
+                    "-framerate",
+                    &fps_arg,
+                    "-thread_queue_size",
+                    "512",
+                    "-i",
+                    "-",
                     "-an",
-                    "-c:v", "libvpx-vp9",
-                    "-deadline", "realtime",
-                    "-cpu-used", "8",
-                    "-row-mt", "1",
-                    "-b:v", "0",
-                    "-crf", "32",
-                    "-pix_fmt", "yuv420p",
+                    "-c:v",
+                    "libvpx-vp9",
+                    "-deadline",
+                    "realtime",
+                    "-cpu-used",
+                    "8",
+                    "-row-mt",
+                    "1",
+                    "-b:v",
+                    "0",
+                    "-crf",
+                    "32",
+                    "-pix_fmt",
+                    "yuv420p",
                     &output_path,
                 ])
                 .stdin(Stdio::piped())
                 .stdout(Stdio::null())
-                .stderr(Stdio::null())
+                .stderr(Stdio::null());
+            #[cfg(target_os = "windows")]
+            {
+                command.creation_flags(0x08000000);
+            }
+            let mut child = command
                 .spawn()
                 .map_err(|e| format!("Failed to launch ffmpeg: {}", e))?;
 
@@ -798,7 +871,10 @@ fn start_ffmpeg_recording_internal(
 
                 // Ignore unexpected dimension changes
                 if frame.width != width || frame.height != height {
-                    eprintln!("Ignoring frame with unexpected dimensions: {}x{} (expected {}x{})", frame.width, frame.height, width, height);
+                    eprintln!(
+                        "Ignoring frame with unexpected dimensions: {}x{} (expected {}x{})",
+                        frame.width, frame.height, width, height
+                    );
                     continue;
                 }
 
@@ -810,28 +886,28 @@ fn start_ffmpeg_recording_internal(
                 // We write up to expected_frames, but at least ensure we write the NEW frame eventually.
                 // Actually, we should write duplicates for all frames strictly BEFORE the current one.
                 // Then write the current one.
-                
+
                 // Example:
                 // frame_count = 1 (frame 0 written).
                 // New frame at 100ms (fps 30, ~33ms).
                 // expected_frames = 100 / 33.33 = 3.
                 // We need frames 1 and 2 to be duplicates of frame 0.
                 // Then frame 3 is the new frame.
-                
+
                 // Note: frame_count is 1-based (number of frames written).
                 // expected_frames is 0-based index? No, it's count.
                 // If t=0, expected=0. But we wrote 1.
                 // Let's use expected_index logic.
-                
+
                 // Frame 0: t=0. Written. frame_count=1.
                 // Next Frame: t=100. expected_index = 3.
                 // We need to write indices 1 and 2.
                 // So while frame_count <= expected_index (wait, if expected is 3, we want to write slot 3 with NEW frame).
                 // So we want to fill slots 1, 2 with OLD frame.
                 // So while frame_count < expected_frames:
-                
+
                 while frame_count < expected_frames {
-                   if let Err(err) = stdin.write_all(&last_pixels) {
+                    if let Err(err) = stdin.write_all(&last_pixels) {
                         return Err(format!("Failed to pipe duplicate frame: {}", err));
                     }
                     frame_count += 1;
@@ -840,13 +916,15 @@ fn start_ffmpeg_recording_internal(
                 if let Err(err) = stdin.write_all(&frame.pixels) {
                     return Err(format!("Failed to pipe frame: {}", err));
                 }
-                
+
                 last_pixels = frame.pixels; // Update last pixels for next gap
                 frame_count += 1;
             }
 
             drop(stdin);
-            let status = child.wait().map_err(|e| format!("ffmpeg wait failed: {}", e))?;
+            let status = child
+                .wait()
+                .map_err(|e| format!("ffmpeg wait failed: {}", e))?;
             if !status.success() {
                 return Err(format!("ffmpeg exited with status {}", status));
             }
@@ -1010,7 +1088,7 @@ pub fn clear_recording_mouse_events() {
 #[napi]
 pub fn get_current_mouse_position() -> Result<Option<MouseEventRecord>> {
     let (mouse_x, mouse_y) = get_mouse_position();
-    
+
     match (mouse_x, mouse_y) {
         (Some(x), Some(y)) => {
             // Get screen dimensions from primary monitor
@@ -1020,19 +1098,21 @@ pub fn get_current_mouse_position() -> Result<Option<MouseEventRecord>> {
                 .and_then(|m| m.capture_image().ok())
                 .map(|img| (img.width(), img.height()))
                 .unwrap_or((1920, 1080));
-            
+
             let timestamp = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map(|d| d.as_millis() as i64)
                 .unwrap_or(0);
-            
+
             let state = CAPTURE_STATE.lock();
-            let is_pressed = state.left_button_pressed || state.right_button_pressed || state.middle_button_pressed;
-            
+            let is_pressed = state.left_button_pressed
+                || state.right_button_pressed
+                || state.middle_button_pressed;
+
             // Get cursor shape (release lock first to avoid issues)
             drop(state);
             let cursor_shape = cursor_shape::get_cursor_shape();
-            
+
             Ok(Some(MouseEventRecord {
                 timestamp_ms: timestamp,
                 x,

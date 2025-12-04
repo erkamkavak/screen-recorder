@@ -9,17 +9,17 @@ pub fn get_cursor_shape() -> String {
     {
         linux::get_cursor_shape_x11().unwrap_or_else(|| "default".to_string())
     }
-    
+
     #[cfg(target_os = "windows")]
     {
         windows::get_cursor_shape_win32().unwrap_or_else(|| "default".to_string())
     }
-    
+
     #[cfg(target_os = "macos")]
     {
         macos::get_cursor_shape_cocoa().unwrap_or_else(|| "default".to_string())
     }
-    
+
     #[cfg(not(any(target_os = "linux", target_os = "windows", target_os = "macos")))]
     {
         "default".to_string()
@@ -31,7 +31,7 @@ pub fn get_cursor_shape() -> String {
 pub fn normalize_cursor_serial(serial: u32) -> String {
     match serial {
         16619 => "default".to_string(),
-        16621 => "text".to_string(), 
+        16621 => "text".to_string(),
         16622 => "pointer".to_string(),
         _ => "default".to_string(), // Default for any other serial
     }
@@ -40,24 +40,24 @@ pub fn normalize_cursor_serial(serial: u32) -> String {
 // Linux-specific implementation using X11 XFIXES extension
 #[cfg(target_os = "linux")]
 mod linux {
-    use std::sync::OnceLock;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
-    use x11rb::rust_connection::RustConnection;
+    use std::sync::OnceLock;
     use x11rb::protocol::xfixes::{self};
-    
+    use x11rb::rust_connection::RustConnection;
+
     // Cache the X11 connection to avoid reconnecting on every call
     static X11_CONNECTION: OnceLock<Option<RustConnection>> = OnceLock::new();
     // Cache the last cursor hash to reduce log spam
     static LAST_CURSOR_HASH: std::sync::Mutex<u64> = std::sync::Mutex::new(0);
-    
+
     fn get_connection() -> Option<&'static RustConnection> {
         X11_CONNECTION.get_or_init(|| {
             // Check if running under Wayland
             if std::env::var("WAYLAND_DISPLAY").is_ok() {
                 eprintln!("Running under Wayland - X11 cursor names may not be available via XWayland");
             }
-            
+
             match x11rb::connect(None) {
                 Ok((conn, _screen_num)) => {
                     // Query XFIXES extension version (required before using it)
@@ -77,21 +77,19 @@ mod linux {
             }
         }).as_ref()
     }
-    
+
     /// Get cursor shape from X11 using XFIXES extension.
     /// Returns None if X11 is not available or the operation fails.
     pub fn get_cursor_shape_x11() -> Option<String> {
         // Wrap in catch_unwind to handle any panics from x11rb
-        std::panic::catch_unwind(|| {
-            get_cursor_shape_x11_inner()
-        })
-        .ok()
-        .flatten()
+        std::panic::catch_unwind(|| get_cursor_shape_x11_inner())
+            .ok()
+            .flatten()
     }
-    
+
     fn get_cursor_shape_x11_inner() -> Option<String> {
         let conn = get_connection()?;
-        
+
         // Get cursor image and name
         let cursor_cookie = xfixes::get_cursor_image_and_name(conn).ok()?;
         let reply = cursor_cookie.reply().ok()?;
@@ -117,7 +115,7 @@ mod linux {
                 *last_hash = cursor_hash;
             }
         }
-        
+
         Some(normalized)
     }
 
@@ -140,7 +138,11 @@ mod linux {
         let lower = name.to_ascii_lowercase();
         if lower.contains("ibeam") || lower.contains("text") || lower.contains("xterm") {
             "text".to_string()
-        } else if lower.contains("hand") || lower.contains("pointer") || lower.contains("left_ptr") || lower.contains("right_ptr") {
+        } else if lower.contains("hand")
+            || lower.contains("pointer")
+            || lower.contains("left_ptr")
+            || lower.contains("right_ptr")
+        {
             "pointer".to_string()
         } else if lower.contains("watch") || lower.contains("wait") {
             "wait".to_string()
@@ -154,21 +156,19 @@ mod linux {
 #[cfg(target_os = "windows")]
 mod windows {
     use std::sync::Mutex;
-    use windows::Win32::UI::WindowsAndMessaging::{
-        GetCursorInfo, CURSORINFO, CURSOR_SHOWING,
-        IDC_ARROW, IDC_IBEAM, IDC_WAIT, IDC_CROSS, IDC_UPARROW,
-        IDC_SIZENWSE, IDC_SIZENESW, IDC_SIZEWE, IDC_SIZENS, IDC_SIZEALL,
-        IDC_NO, IDC_HAND, IDC_APPSTARTING, IDC_HELP,
-        LoadCursorW,
-    };
-    use windows::Win32::Foundation::HINSTANCE;
     use std::sync::OnceLock;
-    
+    use windows::Win32::Foundation::HINSTANCE;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        GetCursorInfo, LoadCursorW, CURSORINFO, CURSOR_SHOWING, IDC_APPSTARTING, IDC_ARROW,
+        IDC_CROSS, IDC_HAND, IDC_HELP, IDC_IBEAM, IDC_NO, IDC_SIZEALL, IDC_SIZENESW, IDC_SIZENS,
+        IDC_SIZENWSE, IDC_SIZEWE, IDC_UPARROW, IDC_WAIT,
+    };
+
     // Cache last cursor handle to reduce log spam
     static LAST_CURSOR_HANDLE: Mutex<isize> = Mutex::new(0);
     // Cache system cursor handles for comparison
     static SYSTEM_CURSORS: OnceLock<SystemCursors> = OnceLock::new();
-    
+
     struct SystemCursors {
         arrow: isize,
         ibeam: isize,
@@ -185,52 +185,76 @@ mod windows {
         appstarting: isize,
         help: isize,
     }
-    
+
     fn get_system_cursors() -> &'static SystemCursors {
-        SYSTEM_CURSORS.get_or_init(|| {
-            unsafe {
-                SystemCursors {
-                    arrow: LoadCursorW(HINSTANCE::default(), IDC_ARROW).map(|h| h.0 as isize).unwrap_or(0),
-                    ibeam: LoadCursorW(HINSTANCE::default(), IDC_IBEAM).map(|h| h.0 as isize).unwrap_or(0),
-                    wait: LoadCursorW(HINSTANCE::default(), IDC_WAIT).map(|h| h.0 as isize).unwrap_or(0),
-                    cross: LoadCursorW(HINSTANCE::default(), IDC_CROSS).map(|h| h.0 as isize).unwrap_or(0),
-                    uparrow: LoadCursorW(HINSTANCE::default(), IDC_UPARROW).map(|h| h.0 as isize).unwrap_or(0),
-                    sizenwse: LoadCursorW(HINSTANCE::default(), IDC_SIZENWSE).map(|h| h.0 as isize).unwrap_or(0),
-                    sizenesw: LoadCursorW(HINSTANCE::default(), IDC_SIZENESW).map(|h| h.0 as isize).unwrap_or(0),
-                    sizewe: LoadCursorW(HINSTANCE::default(), IDC_SIZEWE).map(|h| h.0 as isize).unwrap_or(0),
-                    sizens: LoadCursorW(HINSTANCE::default(), IDC_SIZENS).map(|h| h.0 as isize).unwrap_or(0),
-                    sizeall: LoadCursorW(HINSTANCE::default(), IDC_SIZEALL).map(|h| h.0 as isize).unwrap_or(0),
-                    no: LoadCursorW(HINSTANCE::default(), IDC_NO).map(|h| h.0 as isize).unwrap_or(0),
-                    hand: LoadCursorW(HINSTANCE::default(), IDC_HAND).map(|h| h.0 as isize).unwrap_or(0),
-                    appstarting: LoadCursorW(HINSTANCE::default(), IDC_APPSTARTING).map(|h| h.0 as isize).unwrap_or(0),
-                    help: LoadCursorW(HINSTANCE::default(), IDC_HELP).map(|h| h.0 as isize).unwrap_or(0),
-                }
+        SYSTEM_CURSORS.get_or_init(|| unsafe {
+            SystemCursors {
+                arrow: LoadCursorW(HINSTANCE::default(), IDC_ARROW)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                ibeam: LoadCursorW(HINSTANCE::default(), IDC_IBEAM)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                wait: LoadCursorW(HINSTANCE::default(), IDC_WAIT)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                cross: LoadCursorW(HINSTANCE::default(), IDC_CROSS)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                uparrow: LoadCursorW(HINSTANCE::default(), IDC_UPARROW)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                sizenwse: LoadCursorW(HINSTANCE::default(), IDC_SIZENWSE)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                sizenesw: LoadCursorW(HINSTANCE::default(), IDC_SIZENESW)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                sizewe: LoadCursorW(HINSTANCE::default(), IDC_SIZEWE)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                sizens: LoadCursorW(HINSTANCE::default(), IDC_SIZENS)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                sizeall: LoadCursorW(HINSTANCE::default(), IDC_SIZEALL)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                no: LoadCursorW(HINSTANCE::default(), IDC_NO)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                hand: LoadCursorW(HINSTANCE::default(), IDC_HAND)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                appstarting: LoadCursorW(HINSTANCE::default(), IDC_APPSTARTING)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
+                help: LoadCursorW(HINSTANCE::default(), IDC_HELP)
+                    .map(|h| h.0 as isize)
+                    .unwrap_or(0),
             }
         })
     }
-    
+
     pub fn get_cursor_shape_win32() -> Option<String> {
-        std::panic::catch_unwind(|| {
-            get_cursor_shape_win32_inner()
-        })
-        .ok()
-        .flatten()
+        std::panic::catch_unwind(|| get_cursor_shape_win32_inner())
+            .ok()
+            .flatten()
     }
-    
+
     fn get_cursor_shape_win32_inner() -> Option<String> {
         unsafe {
             let mut cursor_info: CURSORINFO = std::mem::zeroed();
             cursor_info.cbSize = std::mem::size_of::<CURSORINFO>() as u32;
-            
+
             if GetCursorInfo(&mut cursor_info).is_ok() {
                 // Check if cursor is visible
                 if cursor_info.flags.0 & CURSOR_SHOWING.0 == 0 {
                     return Some("default".to_string());
                 }
-                
+
                 let hcursor = cursor_info.hCursor.0 as isize;
                 let cursors = get_system_cursors();
-                
+
                 // Map cursor handle to known system cursors
                 let shape = if hcursor == cursors.arrow {
                     "default"
@@ -261,7 +285,7 @@ mod windows {
                 } else {
                     "default"
                 };
-                
+
                 // Only log when cursor changes
                 if let Ok(mut last_handle) = LAST_CURSOR_HANDLE.lock() {
                     if *last_handle != hcursor {
@@ -269,7 +293,7 @@ mod windows {
                         *last_handle = hcursor;
                     }
                 }
-                
+
                 Some(shape.to_string())
             } else {
                 None
@@ -281,33 +305,31 @@ mod windows {
 // macOS-specific implementation using Cocoa/AppKit
 #[cfg(target_os = "macos")]
 mod macos {
-    use std::sync::Mutex;
-    use objc::{class, msg_send, sel, sel_impl};
     use objc::runtime::Object;
-    
+    use objc::{class, msg_send, sel, sel_impl};
+    use std::sync::Mutex;
+
     // Cache last cursor pointer to reduce log spam
     static LAST_CURSOR_PTR: Mutex<usize> = Mutex::new(0);
-    
+
     pub fn get_cursor_shape_cocoa() -> Option<String> {
-        std::panic::catch_unwind(|| {
-            get_cursor_shape_cocoa_inner()
-        })
-        .ok()
-        .flatten()
+        std::panic::catch_unwind(|| get_cursor_shape_cocoa_inner())
+            .ok()
+            .flatten()
     }
-    
+
     fn get_cursor_shape_cocoa_inner() -> Option<String> {
         unsafe {
             // Get the current system cursor
             let nscursor_class = class!(NSCursor);
             let current_cursor: *mut Object = msg_send![nscursor_class, currentSystemCursor];
-            
+
             if current_cursor.is_null() {
                 return Some("default".to_string());
             }
-            
+
             let cursor_ptr = current_cursor as usize;
-            
+
             // Get standard cursors for comparison
             let arrow_cursor: *mut Object = msg_send![nscursor_class, arrowCursor];
             let ibeam_cursor: *mut Object = msg_send![nscursor_class, IBeamCursor];
@@ -315,10 +337,12 @@ mod macos {
             let crosshair_cursor: *mut Object = msg_send![nscursor_class, crosshairCursor];
             let open_hand_cursor: *mut Object = msg_send![nscursor_class, openHandCursor];
             let closed_hand_cursor: *mut Object = msg_send![nscursor_class, closedHandCursor];
-            let resize_left_right_cursor: *mut Object = msg_send![nscursor_class, resizeLeftRightCursor];
+            let resize_left_right_cursor: *mut Object =
+                msg_send![nscursor_class, resizeLeftRightCursor];
             let resize_up_down_cursor: *mut Object = msg_send![nscursor_class, resizeUpDownCursor];
-            let operation_not_allowed_cursor: *mut Object = msg_send![nscursor_class, operationNotAllowedCursor];
-            
+            let operation_not_allowed_cursor: *mut Object =
+                msg_send![nscursor_class, operationNotAllowedCursor];
+
             // Compare current cursor with known cursors
             let shape = if current_cursor == arrow_cursor {
                 "default"
@@ -341,7 +365,7 @@ mod macos {
             } else {
                 "default"
             };
-            
+
             // Only log when cursor changes
             if let Ok(mut last_ptr) = LAST_CURSOR_PTR.lock() {
                 if *last_ptr != cursor_ptr {
@@ -349,7 +373,7 @@ mod macos {
                     *last_ptr = cursor_ptr;
                 }
             }
-            
+
             Some(shape.to_string())
         }
     }
@@ -358,7 +382,7 @@ mod macos {
 #[cfg(test)]
 mod tests {
     use super::*;
-    
+
     #[test]
     fn test_normalize_cursor_serial() {
         assert_eq!(normalize_cursor_serial(16619), "default");
@@ -366,7 +390,7 @@ mod tests {
         assert_eq!(normalize_cursor_serial(16622), "pointer");
         assert_eq!(normalize_cursor_serial(99999), "default"); // Unknown serial
     }
-    
+
     #[test]
     fn test_get_cursor_shape_does_not_panic() {
         // This should not panic even if X11 is not available

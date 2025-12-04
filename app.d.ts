@@ -31,6 +31,8 @@ declare global {
     pixels?: ArrayBuffer; // Legacy field for compatibility
     mouseX?: number | null;
     mouseY?: number | null;
+    originX: number;
+    originY: number;
   }
 
   interface NativeMouseEvent {
