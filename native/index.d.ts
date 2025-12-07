@@ -26,6 +26,10 @@ export interface RecordingOptions {
   frameRate: number
   fileName?: string
 }
+export declare function listSources(): Array<DesktopSource>
+export declare function startCapture(options: RecordingOptions): void
+export declare function stopCapture(): void
+export declare function pollFrame(): Promise<FrameData | null>
 export interface MouseEventRecord {
   timestampMs: number
   x: number
@@ -36,20 +40,8 @@ export interface MouseEventRecord {
   isPressed: boolean
   cursorShape: string
 }
-export declare function listSources(): Array<DesktopSource>
-export declare function startCapture(options: RecordingOptions): void
-export declare function stopCapture(): void
-export declare function isCaptureRunning(): boolean
-export declare function pollFrame(): Promise<FrameData | null>
+export declare function getRecordingMouseEvents(): Array<MouseEventRecord>
+export declare function clearRecordingMouseEvents(): void
+export declare function getCurrentMousePosition(): MouseEventRecord | null
 export declare function startRecording(options: RecordingOptions): string
 export declare function stopRecording(): string
-export declare function takeScreenshot(targetId: string, captureType: string): string
-/**
- * Get the mouse events captured during the last recording session.
- * Returns normalized coordinates (0.0-1.0) relative to the captured screen.
- */
-export declare function getRecordingMouseEvents(): Array<MouseEventRecord>
-/** Clear the stored mouse events */
-export declare function clearRecordingMouseEvents(): void
-/** Get current mouse position (for real-time cursor tracking) */
-export declare function getCurrentMousePosition(): MouseEventRecord | null
