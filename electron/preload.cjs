@@ -22,14 +22,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
       return [];
     }
   },
-  getDesktopSourceId: async (options) => {
-    try {
-      return await ipcRenderer.invoke("desktop-capture:get-default-source", options);
-    } catch (error) {
-      console.error("Failed to retrieve desktop capture sources", error);
-      return null;
-    }
-  },
   startGlobalInputCapture: async () => {
     return ipcRenderer.send("input-capture:start");
   },
@@ -58,12 +50,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   listNativeSources: () => ipcRenderer.invoke("native-recording:list-sources"),
   startNativeCapture: (options) => ipcRenderer.invoke("native-recording:start-capture", options),
   stopNativeCapture: () => ipcRenderer.invoke("native-recording:stop-capture"),
-  isNativeCaptureRunning: () => ipcRenderer.invoke("native-recording:is-running"),
   pollNativeFrame: () => ipcRenderer.invoke("native-recording:poll-frame"),
   startNativeRecording: (options) => ipcRenderer.invoke("native-recording:start", options),
   stopNativeRecording: () => ipcRenderer.invoke("native-recording:stop"),
-  takeNativeScreenshot: (options) => ipcRenderer.invoke("native-recording:screenshot", options),
-  
   // Native mouse position APIs (synced with screen capture in Rust)
   getRecordingMouseEvents: () => ipcRenderer.invoke("native-recording:get-mouse-events"),
   clearRecordingMouseEvents: () => ipcRenderer.invoke("native-recording:clear-mouse-events"),

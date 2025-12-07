@@ -57,8 +57,6 @@ declare global {
   interface ElectronAPI {
     // Desktop capture (Electron built-in)
     listDesktopSources?: (options?: DesktopCaptureOptions) => Promise<DesktopCaptureSourceSummary[]>;
-    getDesktopSourceId?: (options?: DesktopCaptureOptions) => Promise<string | null>;
-    
     // Input capture
     startGlobalInputCapture?: () => void;
     stopGlobalInputCapture?: () => void;
@@ -82,15 +80,12 @@ declare global {
     startNativeCapture?: (options: NativeRecordingOptions) => Promise<boolean>;
     stopNativeCapture?: () => Promise<boolean>;
     pollNativeFrame?: () => Promise<NativeCaptureFrame | null>;
-    isNativeCaptureRunning?: () => Promise<boolean>;
     
     // Native recording (Rust xcap-based, records to file)
     isNativeRecordingAvailable?: () => Promise<boolean>;
     listNativeSources?: () => Promise<DesktopCaptureSourceSummary[]>;
     startNativeRecording?: (options: NativeRecordingOptions) => Promise<string>;
     stopNativeRecording?: () => Promise<string>;
-    takeNativeScreenshot?: (options: { targetId: string; captureType: string }) => Promise<string>;
-    
     // Native mouse position APIs (synced with Rust screen capture)
     getRecordingMouseEvents?: () => Promise<NativeMouseEvent[]>;
     clearRecordingMouseEvents?: () => Promise<boolean>;

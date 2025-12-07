@@ -389,25 +389,6 @@ app.whenReady().then(() => {
     }));
   });
 
-  ipcMain.handle("desktop-capture:get-default-source", async (_event, options = {}) => {
-    const sources = await desktopCapturer.getSources({
-      types: ["screen", "window"],
-      thumbnailSize: { width: 0, height: 0 },
-      ...options,
-    });
-
-    const preferredId = options?.preferredId;
-    if (preferredId) {
-      const preferred = sources.find((source) => source.id === preferredId);
-      if (preferred) return preferred.id;
-    }
-
-    const screenSource = sources.find((source) => source.id.startsWith("screen:"));
-    const windowSource = sources.find((source) => source.id.startsWith("window:"));
-    const pickedSource = screenSource || windowSource || sources[0];
-    return pickedSource ? pickedSource.id : null;
-  });
-
   // Native recording handlers (using Rust xcap addon)
   ipcMain.handle("native-recording:list-sources", async () => {
     if (!nativeAddon) {
@@ -458,13 +439,6 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle("native-recording:is-running", async () => {
-    if (!nativeAddon) {
-      return false;
-    }
-    return nativeAddon.isCaptureRunning();
-  });
-
   ipcMain.handle("native-recording:poll-frame", async () => {
     if (!nativeAddon) {
       throw new Error("Native addon not available");
@@ -512,22 +486,6 @@ app.whenReady().then(() => {
       return filePath;
     } catch (error) {
       console.error("Failed to stop native recording:", error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle("native-recording:screenshot", async (_event, options) => {
-    if (!nativeAddon) {
-      throw new Error("Native addon not available");
-    }
-    try {
-      const dataUrl = nativeAddon.takeScreenshot(
-        options.targetId || "monitor:0",
-        options.captureType || "monitor"
-      );
-      return dataUrl;
-    } catch (error) {
-      console.error("Failed to take screenshot:", error);
       throw error;
     }
   });

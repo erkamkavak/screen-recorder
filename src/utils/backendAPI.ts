@@ -50,14 +50,6 @@ export const listDesktopSources = async (options?: any): Promise<DesktopSource[]
   throw new Error("Desktop capture sources not available outside Electron");
 };
 
-export const getDefaultDesktopSource = async (options?: any): Promise<string | null> => {
-  if (isElectron) {
-    return await window.electronAPI.getDesktopSourceId(options);
-  }
-
-  throw new Error("Desktop capture not available outside Electron");
-};
-
 // Input Capture APIs
 export const startGlobalInputCapture = async (): Promise<void> => {
   if (isElectron) {
@@ -227,18 +219,6 @@ export const pollNativeFrame = async (): Promise<any> => {
   throw new Error("Native capture not available outside Electron");
 };
 
-export const isNativeCaptureRunning = async (): Promise<boolean> => {
-  if (isElectron) {
-    try {
-      return await window.electronAPI.isNativeCaptureRunning();
-    } catch {
-      return false;
-    }
-  }
-
-  throw new Error("Native capture not available outside Electron");
-};
-
 // XCap Recording and Screenshot APIs
 export const startNativeRecording = async (options: {
   targetId?: string;
@@ -276,26 +256,6 @@ export const stopNativeRecording = async (): Promise<string> => {
   }
 
   throw new Error("Native recording not available outside Electron");
-};
-
-export const takeScreenshot = async (options: {
-  targetId?: string;
-  captureType?: string;
-  includeCursor?: boolean;
-}): Promise<string> => {
-  if (isElectron) {
-    try {
-      return await window.electronAPI.takeNativeScreenshot({
-        targetId: options.targetId || "monitor:0",
-        captureType: options.captureType || "monitor",
-      });
-    } catch (error) {
-      console.error("Failed to take screenshot:", error);
-      throw error;
-    }
-  }
-
-  throw new Error("Native screenshot not available outside Electron");
 };
 
 // Native mouse position APIs (synced with Rust screen capture)
@@ -358,18 +318,15 @@ export const getBackendInfo = () => {
 export const backendAPI = {
   // Desktop capture
   listDesktopSources,
-  getDefaultDesktopSource,
 
   // Native capture (streaming)
   startNativeCapture,
   stopNativeCapture,
   pollNativeFrame,
-  isNativeCaptureRunning,
 
   // Native recording and screenshots
   startNativeRecording,
   stopNativeRecording,
-  takeScreenshot,
 
   // Recording assets
   saveRenderedFile,
