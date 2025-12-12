@@ -55,6 +55,9 @@ pub fn start_ffmpeg_recording_internal(
             command
                 .args([
                     "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
                     "-f",
                     "rawvideo",
                     "-pixel_format",
@@ -64,24 +67,36 @@ pub fn start_ffmpeg_recording_internal(
                     "-framerate",
                     &fps_arg,
                     "-thread_queue_size",
-                    "512",
+                    "64",
                     "-i",
                     "-",
                     "-an",
+                    "-vf",
+                    "scale=in_range=pc:out_range=tv:in_color_matrix=bt709:out_color_matrix=bt709",
                     "-c:v",
-                    "libvpx-vp9",
-                    "-deadline",
-                    "realtime",
-                    "-cpu-used",
-                    "8",
-                    "-row-mt",
-                    "1",
-                    "-b:v",
-                    "0",
+                    "libx264",
+                    "-preset",
+                    "veryfast",
                     "-crf",
-                    "32",
+                    "14",
+                    "-maxrate",
+                    "16M",
+                    "-bufsize",
+                    "32M",
+                    "-colorspace",
+                    "bt709",
+                    "-color_primaries",
+                    "bt709",
+                    "-color_trc",
+                    "bt709",
+                    "-color_range",
+                    "tv",
                     "-pix_fmt",
-                    "yuv420p",
+                    "yuv444p",
+                    "-profile:v",
+                    "high444",
+                    "-movflags",
+                    "+faststart",
                     &output_path,
                 ])
                 .stdin(Stdio::piped())
@@ -181,7 +196,7 @@ pub fn start_recording(options: RecordingOptions) -> Result<String> {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        format!("recording-{}.webm", timestamp)
+        format!("recording-{}.mp4", timestamp)
     });
 
     let file_path = recording_dir.join(timestamped_name(&file_name));
