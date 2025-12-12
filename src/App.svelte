@@ -4,13 +4,34 @@
   import ActionBar from "./components/ActionBar.svelte";
   import ReviewView from "./components/ReviewView.svelte";
   import RecorderSidebar from "./components/RecorderSidebar.svelte";
-  import { startRecording, stopRecording } from "./lib/recording/recordingController";
+  import { createRecordingController, type RecordingController } from "./lib/recording/recordingController";
+  import * as stores from "./lib/stores";
+  import { backendAPI } from "./lib/backend/backendAPI";
+  import { patchBlob } from "./lib/utils/blobHelpers";
+  import { getPreferredMimeType } from "./lib/utils/getPreferredMimeType";
+
+  const recordingController: RecordingController = createRecordingController({
+    stores: {
+      appView: stores.appView,
+      inputEvents: stores.inputEvents,
+      lastRecording: stores.lastRecording,
+      recordingFPS: stores.recordingFPS,
+      recordingStartTime: stores.recordingStartTime,
+      displayStream: stores.displayStream,
+      webcamState: stores.webcamState,
+      micState: stores.micState,
+      activeShare: stores.activeShare,
+    },
+    backendAPI,
+    patchBlob,
+    getPreferredMimeType,
+  });
 
   const onRecordButtonPress = () => {
     if ($isRecording) {
-      void stopRecording();
+      void recordingController.stopRecording();
     } else {
-      void startRecording();
+      void recordingController.startRecording();
     }
   };
 
