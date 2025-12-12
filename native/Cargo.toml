@@ -12,13 +12,17 @@ napi-derive = "2"
 xcap = "0.7.1"
 image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
 base64 = "0.21"
-tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros"] }
+tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros", "fs"] }
 parking_lot = "0.12"
 lazy_static = "1.4"
 log = "0.4"
 env_logger = "0.10"
 mouse_position = "0.1"
 rdev = "0.5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "0.13", features = ["xfixes"] }

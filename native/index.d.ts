@@ -45,3 +45,44 @@ export declare function clearRecordingMouseEvents(): void
 export declare function getCurrentMousePosition(): MouseEventRecord | null
 export declare function startRecording(options: RecordingOptions): string
 export declare function stopRecording(): string
+export interface TranscriptSegment {
+  startMs: number
+  endMs: number
+  text: string
+  speaker?: string
+}
+export interface Transcript {
+  provider: string
+  language?: string
+  segments: Array<TranscriptSegment>
+  raw?: string
+}
+export interface SubmitTranscriptionRequest {
+  provider: string
+  apiBaseUrl?: string
+  apiKey?: string
+  audioUrl?: string
+  filePath?: string
+  model?: string
+  languageHints?: Array<string>
+  enableLanguageIdentification?: boolean
+  enableSpeakerDiarization?: boolean
+  clientReferenceId?: string
+}
+export interface TranscriptionJobInfo {
+  jobId: string
+  provider: string
+  status: string
+}
+export interface TranscriptionJobSnapshot {
+  jobId: string
+  provider: string
+  status: string
+  errorMessage?: string
+  progress?: number
+}
+export declare function transcriptionListProviders(): Array<string>
+export declare function transcriptionCancel(jobId: string): boolean
+export declare function transcriptionGetJob(jobId: string): TranscriptionJobSnapshot | null
+export declare function transcriptionGetResult(jobId: string): Transcript | null
+export declare function transcriptionSubmit(req: SubmitTranscriptionRequest): TranscriptionJobInfo

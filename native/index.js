@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { listSources, startCapture, stopCapture, pollFrame, getRecordingMouseEvents, clearRecordingMouseEvents, getCurrentMousePosition, startRecording, stopRecording } = nativeBinding
+const { listSources, startCapture, stopCapture, pollFrame, getRecordingMouseEvents, clearRecordingMouseEvents, getCurrentMousePosition, startRecording, stopRecording, transcriptionListProviders, transcriptionCancel, transcriptionGetJob, transcriptionGetResult, transcriptionSubmit } = nativeBinding
 
 module.exports.listSources = listSources
 module.exports.startCapture = startCapture
@@ -321,3 +321,8 @@ module.exports.clearRecordingMouseEvents = clearRecordingMouseEvents
 module.exports.getCurrentMousePosition = getCurrentMousePosition
 module.exports.startRecording = startRecording
 module.exports.stopRecording = stopRecording
+module.exports.transcriptionListProviders = transcriptionListProviders
+module.exports.transcriptionCancel = transcriptionCancel
+module.exports.transcriptionGetJob = transcriptionGetJob
+module.exports.transcriptionGetResult = transcriptionGetResult
+module.exports.transcriptionSubmit = transcriptionSubmit

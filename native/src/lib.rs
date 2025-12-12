@@ -4,6 +4,8 @@ mod capture;
 mod cursor_shape;
 mod mouse_events;
 mod recording;
+#[path = "transcription/mod.rs"]
+mod transcription;
 mod state;
 mod utils;
 
@@ -15,3 +17,8 @@ pub use mouse_events::{
     clear_recording_mouse_events, get_current_mouse_position, get_recording_mouse_events,
 };
 pub use recording::{start_recording, stop_recording};
+pub use transcription::{
+    transcription_cancel, transcription_get_job, transcription_get_result,
+    transcription_list_providers, transcription_submit, SubmitTranscriptionRequest, Transcript,
+    TranscriptSegment, TranscriptionJobInfo, TranscriptionJobSnapshot,
+};
