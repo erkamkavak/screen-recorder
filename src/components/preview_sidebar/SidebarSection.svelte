@@ -3,7 +3,7 @@
   import {
     sidebarSectionDropdownKey,
     type SidebarSectionDropdownContext,
-  } from "../../utils/sidebarSectionDropdownContext";
+  } from "../../lib/utils/sidebarSectionDropdownContext";
 
   export let title: string;
 

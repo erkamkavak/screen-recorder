@@ -8,7 +8,7 @@
     isRecording,
     recordingFPS,
     recordingFPSOptions,
-  } from "../../stores";
+  } from "../../lib/stores";
 
   const handleCanvasSizeChange = (
     event: CustomEvent<{ value: (typeof canvasSizes)[number] }>

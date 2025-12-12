@@ -4,8 +4,8 @@
   import {
     horizScreenAlignOptionsWithLabels,
     vertScreenAlignOptionsWithLabels,
-  } from "./constants";
-  import type { Share, WebcamLayoutState } from "../../stores";
+  } from "../../lib/recording/constants";
+  import type { Share, WebcamLayoutState } from "../../lib/stores";
 
   export let activeShare: Share | undefined;
   export let screenLayoutState: Writable<WebcamLayoutState>;

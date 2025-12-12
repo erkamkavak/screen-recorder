@@ -7,11 +7,11 @@
     webcamLayoutState,
     webcamState,
     type WebcamLayoutState,
-  } from "../../stores";
+  } from "../../lib/stores";
   import {
     sizeOptions,
     webcamShapeOptionsWithLabels,
-  } from "../preview/constants";
+  } from "../../lib/recording/constants";
 
   type Option<T> = { title: string; value: T };
 

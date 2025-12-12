@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Writable } from "svelte/store";
-  import { WebcamShape, activeSidebarTab, isRecording, type WebcamLayoutState, type WebcamState } from "../../stores";
-  import { calculateWebcamMetrics } from "../../utils/webcamMetrics";
+  import { WebcamShape, activeSidebarTab, isRecording, type WebcamLayoutState, type WebcamState } from "../../lib/stores";
+  import { calculateWebcamMetrics } from "../../lib/canvas/webcamMetrics";
 
   export let webcamLayoutState: Writable<WebcamLayoutState>;
   export let webcamState: WebcamState;

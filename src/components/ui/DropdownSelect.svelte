@@ -1,11 +1,11 @@
 <script lang="ts">
   import { createEventDispatcher, getContext, onDestroy } from "svelte";
   import { fade } from "svelte/transition";
-  import { clickOutside } from "../../directives/clickOutside";
+  import { clickOutside } from "../../lib/utils/clickOutside";
   import {
     sidebarSectionDropdownKey,
     type SidebarSectionDropdownContext,
-  } from "../../utils/sidebarSectionDropdownContext";
+  } from "../../lib/utils/sidebarSectionDropdownContext";
 
   export let name: string;
   export let title: string;

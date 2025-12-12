@@ -1,15 +1,15 @@
 <script lang="ts">
   import SidebarSection from "./SidebarSection.svelte";
   import { slide } from "svelte/transition";
-  import { activeTheme, customTheme, themes } from "../../stores";
-  import type { Theme } from "../../stores";
+  import { activeTheme, customTheme, themes } from "../../lib/stores";
+  import type { Theme } from "../../lib/stores";
   import DropdownSelect from "../ui/DropdownSelect.svelte";
   import {
     activeBackground,
     backgrounds,
     customBackgroundImage,
     generalLayoutState,
-  } from "../../stores.js";
+  } from "../../lib/stores";
   import RangeInput from "../ui/RangeInput.svelte";
   import ColorInput from "../ui/ColorInput.svelte";
   import PaletteIcon from "../icons/palette.icon.svelte";

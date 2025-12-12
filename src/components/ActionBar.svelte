@@ -1,7 +1,7 @@
 <script lang="ts">
   import { createEventDispatcher } from "svelte";
   import { fade } from "svelte/transition";
-  import type { Share } from "../stores";
+  import type { Share } from "../lib/stores";
   import DesktopIcon from "./icons/desktop.icon.svelte";
   import ScreenshotIcon from "./icons/screenshot.icon.svelte";
   import ShareButton from "./ShareButton.svelte";
@@ -16,7 +16,7 @@
     screenShareState,
     micState,
     webcamState,
-  } from "../stores.js";
+  } from "../lib/stores";
   import ActionButton from "./ui/ActionButton.svelte";
 
   const dispatch = createEventDispatcher();

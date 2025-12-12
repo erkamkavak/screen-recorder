@@ -2,7 +2,7 @@
   import CompositePlayer from "./CompositePlayer.svelte";
   import PointerStyleControls from "./PointerStyleControls.svelte";
   import Timeline from "../Timeline.svelte";
-  import type { PointerEventRecord } from "../../stores";
+  import type { PointerEventRecord } from "../../lib/stores";
   import type {
     Background,
     CanvasSize,
@@ -12,9 +12,9 @@
     ScreenState,
     Theme,
     WebcamLayoutState,
-  } from "../../stores";
-  import type { TimelineSnapshot } from "../../stores/timeline";
-  import { humanDuration } from "./helpers";
+  } from "../../lib/stores";
+  import type { TimelineSnapshot } from "../../lib/stores/timeline";
+  import { humanDuration } from "../../lib/utils/duration";
   import { onDestroy, onMount } from "svelte";
 
   export let lastRecording: LastRecording = null;

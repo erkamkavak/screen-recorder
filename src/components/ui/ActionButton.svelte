@@ -1,6 +1,6 @@
 <script lang="ts">
   import clsx from "clsx";
-  import { clickOutside } from "../../directives/clickOutside";
+  import { clickOutside } from "../../lib/utils/clickOutside";
   import { createEventDispatcher } from "svelte";
 
   export let isPopupOpen: boolean = false;

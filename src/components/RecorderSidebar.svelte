@@ -2,7 +2,7 @@
   import SidebarLayoutSection from "./preview_sidebar/SidebarLayoutSection.svelte";
   import SidebarWebcamSection from "./preview_sidebar/SidebarWebcamSection.svelte";
   import SidebarThemeSection from "./preview_sidebar/SidebarThemeSection.svelte";
-  import { activeSidebarTab, webcamState, micState, type SidebarTab } from "../stores";
+  import { activeSidebarTab, webcamState, micState, type SidebarTab } from "../lib/stores";
 
   const setTab = (tab: SidebarTab) => {
     $activeSidebarTab = tab;

@@ -5,8 +5,8 @@
     activeBackground,
     canvasStream,
     type DrawArgs,
-  } from "../../stores";
-  import { drawScreenShare, drawWebcam } from "../../utils/layoutDrawers";
+  } from "../../lib/stores";
+  import { drawScreenShare, drawWebcam } from "../../lib/canvas/layoutDrawers";
 
   export let canvasWidth: number;
   export let canvasHeight: number;

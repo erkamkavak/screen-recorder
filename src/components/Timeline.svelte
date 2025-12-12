@@ -1,8 +1,8 @@
 <script lang="ts">
-  import { timelineStore } from "../stores/timeline";
-  import type { PointerEventRecord } from "../stores";
-  import { ZOOM_DEFAULT_DURATION, ZOOM_DEFAULT_SCALE } from "../utils/zoomDefaults";
-  import { findZoomEventForTime } from "../utils/zoomEvents";
+  import { timelineStore } from "../lib/stores/timeline";
+  import type { PointerEventRecord } from "../lib/stores";
+  import { ZOOM_DEFAULT_DURATION, ZOOM_DEFAULT_SCALE } from "../lib/timeline/zoomDefaults";
+  import { findZoomEventForTime } from "../lib/timeline/zoomEvents";
 
   export let duration = 0;
   export let currentTime = 0;

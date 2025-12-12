@@ -1,10 +1,10 @@
 <script lang="ts">
   import Preview from "./components/Preview.svelte";
-  import { appView, isRecording } from "./stores";
+  import { appView, isRecording } from "./lib/stores";
   import ActionBar from "./components/ActionBar.svelte";
   import ReviewView from "./components/ReviewView.svelte";
   import RecorderSidebar from "./components/RecorderSidebar.svelte";
-  import { startRecording, stopRecording } from "./recording/recordingController";
+  import { startRecording, stopRecording } from "./lib/recording/recordingController";
 
   const onRecordButtonPress = () => {
     if ($isRecording) {

@@ -1,13 +1,13 @@
 <script lang="ts">
   import ActionButton from "./ui/ActionButton.svelte";
-  import type { Share } from "../stores";
-  import { recordingFPS, screenShareState, isRecording } from "../stores";
+  import type { Share } from "../lib/stores";
+  import { recordingFPS, screenShareState, isRecording } from "../lib/stores";
   import { onMount } from "svelte";
   import LoadingDots from "./icons/loadingDots.icon.svelte";
   import CloseIcon from "./icons/close.icon.svelte";
   import clsx from "clsx";
-  import { clickOutside } from "../directives/clickOutside";
-  import { backendAPI } from "../utils/backendAPI";
+  import { clickOutside } from "../lib/utils/clickOutside";
+  import { backendAPI } from "../lib/backend/backendAPI";
 
   type DesktopSourceSummary = {
     id: string;

@@ -17,13 +17,13 @@
     webcamLayoutState,
     webcamState,
     type DrawArgs,
-  } from "../stores";
+  } from "../lib/stores";
   import PreviewStage from "./preview/PreviewStage.svelte";
   import PreviewCanvas from "./preview/PreviewCanvas.svelte";
   import ScreenAlignmentOverlay from "./preview/ScreenAlignmentOverlay.svelte";
   import WebcamOverlay from "./preview/WebcamOverlay.svelte";
-  import { createInputCapture } from "./preview/useInputCapture";
-  import { MouseOverlayRecorder } from "../utils/mouseOverlayRecorder";
+  import { createInputCapture } from "../lib/recording/useInputCapture";
+  import { MouseOverlayRecorder } from "../lib/recording/mouseOverlayRecorder";
 
   let stageWidth = 0;
   let stageHeight = 0;

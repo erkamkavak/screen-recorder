@@ -9,14 +9,14 @@
     recordingFPS,
     screenLayoutState,
     webcamLayoutState,
-  } from "../stores";
-  import type { PointerEventRecord, RecordingAsset } from "../stores";
+  } from "../lib/stores";
+  import type { PointerEventRecord, RecordingAsset } from "../lib/stores";
   import Review from "./review/Review.svelte";
   import cursorPackCursor from "../assets/cursors/cutecore-pink-cursor.png?url";
   import cursorPackPointer from "../assets/cursors/cutecore-pink-pointer.png?url";
-  import { timelineStore } from "../stores/timeline";
+  import { timelineStore } from "../lib/stores/timeline";
   import { onDestroy, onMount } from "svelte";
-  import { backendAPI } from "../utils/backendAPI";
+  import { backendAPI } from "../lib/backend/backendAPI";
   import {
     render,
     isWebCodecsAvailable,
@@ -27,11 +27,11 @@
     computePointerState,
     getPointerRecords,
     type ComputedPointerState,
-  } from "../utils/pointerState";
-  import { ZOOM_DEFAULT_DURATION, ZOOM_DEFAULT_SCALE } from "../utils/zoomDefaults";
-  import { calculateScreenPlacement } from "../utils/layoutDrawers";
-  import type { ScreenPlacement } from "../utils/layoutDrawers";
-  import { findZoomEventForTime } from "../utils/zoomEvents";
+  } from "../lib/pointer/pointerState";
+  import { ZOOM_DEFAULT_DURATION, ZOOM_DEFAULT_SCALE } from "../lib/timeline/zoomDefaults";
+  import { calculateScreenPlacement } from "../lib/canvas/layoutDrawers";
+  import type { ScreenPlacement } from "../lib/canvas/layoutDrawers";
+  import { findZoomEventForTime } from "../lib/timeline/zoomEvents";
 
   let videoDuration = 0;
   let videoCurrentTime = 0;
