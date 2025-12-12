@@ -29,6 +29,7 @@
   export let currentSnapshot: TimelineSnapshot;
 
   export let includePointerTrack = true;
+  export let includeClickTrack = true;
   export let includeWebcamTrack = true;
   export let includeAudioTrack = true;
   export let pointerStyle = "opacity: 0;";
@@ -218,6 +219,7 @@
             showScreen={true}
             showWebcam={includeWebcamTrack}
             showMouse={includePointerTrack}
+            showClicks={includeClickTrack}
             includeAudio={includeAudioTrack}
             frameRate={recordingFPS}
             pointerRecords={pointerRecords}
@@ -251,6 +253,7 @@
 
       <div class="toggle-group">
         <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includePointerTrack} /> <span>Include pointer</span></label>
+        <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includeClickTrack} /> <span>Show click interactions</span></label>
         <label class="cb" class:disabled={!hasWebcam}>
           <input type="checkbox" class="cb-input" bind:checked={includeWebcamTrack} disabled={!hasWebcam} />
           <span>Include webcam</span>

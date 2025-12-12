@@ -14,6 +14,7 @@ export interface RenderToggleConfig {
     showScreen: boolean;
     showWebcam: boolean;
     showMouse: boolean;
+    showClicks: boolean;
     includeAudio: boolean;
 }
 
@@ -54,12 +55,19 @@ export interface RenderOptions {
 /**
  * Result of a successful render
  */
-export interface RenderResult {
-    type: "blob";
-    blob: Blob;
-    mimeType: string;
-    ext: string;
-}
+export type RenderResult =
+    | {
+          type: "blob";
+          blob: Blob;
+          mimeType: string;
+          ext: string;
+      }
+    | {
+          type: "file";
+          filePath: string;
+          mimeType: string;
+          ext: string;
+      };
 
 /**
  * Internal state for tracking render timing

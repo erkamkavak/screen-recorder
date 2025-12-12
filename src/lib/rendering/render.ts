@@ -3,7 +3,14 @@
  * Coordinates video loading, frame rendering, encoding, and muxing
  */
 
-import type { RenderOptions, RenderResult, TimelineSnapshot, RecordingAssets, Share } from "./types";
+import type {
+    RenderOptions,
+    RenderResult,
+    TimelineSnapshot,
+    RecordingAssets,
+    Share,
+    PointerEventRecord,
+} from "./types";
 import type { FrameRenderConfig } from "./frameRenderer";
 import type { EncodedChunkWithMeta } from "./muxer";
 
@@ -86,6 +93,9 @@ export const render = async (
         options.pointerIconPressedUrl ?? options.pointerIconUrl ?? cursorPackPointer
     );
     const pointerRecords = options.pointerRecords ?? [];
+    const clickRecords = (pointerRecords.filter(
+        (event): event is PointerEventRecord => event.kind === "click"
+    ) ?? []) as PointerEventRecord[];
 
     // Setup canvas
     const frameRate = options.frameRate ?? 30;
@@ -124,6 +134,7 @@ export const render = async (
         screenShare,
         webcamVideo,
         pointerRecords,
+        clickRecords,
         pointerIconImage,
         pointerPressedIconImage,
         pointerSize: options.pointerSize ?? 18,

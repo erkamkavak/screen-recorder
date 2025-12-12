@@ -30,6 +30,7 @@
   export let showScreen: boolean = true;
   export let showWebcam: boolean = true;
   export let showMouse: boolean = true;
+  export let showClicks: boolean = true;
   export let includeAudio: boolean = true;
   export let frameRate: number = 30;
 
@@ -286,6 +287,65 @@
     ctx.translate(-pivotX, -pivotY);
   };
 
+  const drawClickRipples = (timeSec: number) => {
+    if (!ctx || !showClicks || !drawArgs || pointerRecords.length === 0) return;
+
+    const placement = calculateScreenPlacement(
+      canvasSize,
+      drawArgs.activeShare,
+      screenLayoutState,
+      generalLayoutState
+    );
+    if (!placement) return;
+
+    const clickRecords = pointerRecords.filter((event) => event.kind === "click");
+    if (!clickRecords.length) return;
+
+    const timeMs = timeSec * 1000;
+    const rippleDurationMs = 200;
+
+    const baseHeight = 1080;
+    const resolutionScale = canvasSize.height / baseHeight;
+    const POINTER_RENDER_SCALE = 2.5;
+    const pointerRenderSize = pointerIndicatorSize * POINTER_RENDER_SCALE * resolutionScale;
+
+    for (let i = clickRecords.length - 1; i >= 0; i--) {
+      const click = clickRecords[i];
+      if (typeof click.x !== "number" || typeof click.y !== "number") continue;
+
+      const ageMs = timeMs - click.t;
+      if (ageMs < 0) continue;
+      if (ageMs > rippleDurationMs) break;
+
+      const progress = ageMs / rippleDurationMs;
+      const alpha = Math.max(0, 1 - progress);
+
+      const cx = placement.x + click.x * placement.width;
+      const cy = placement.y + click.y * placement.height;
+
+      const radius = pointerRenderSize * (0.2 + progress * 0.3);
+      const lineWidth = Math.max(1, 2 * resolutionScale);
+
+      ctx.save();
+      ctx.globalCompositeOperation = "source-over";
+
+      // Draw Ring (Salmon)
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = `rgba(250, 128, 114, ${alpha})`; // Salmon
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Draw Dot (Teal)
+      ctx.fillStyle = `rgba(13, 148, 136, ${alpha})`; // Teal
+      ctx.beginPath();
+      ctx.arc(cx, cy, pointerRenderSize * 0.08, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+  };
+
   const drawMouseCursor = (pointerState: ComputedPointerState) => {
     if (!showMouse || pointerRecords.length === 0 || !pointerState.visible) return;
     
@@ -314,8 +374,16 @@
       const resolutionScale = canvasSize.height / baseHeight;
       const POINTER_RENDER_SCALE = 2.5;
       const size = pointerIndicatorSize * POINTER_RENDER_SCALE * resolutionScale;
-      
-      ctx.drawImage(icon, pointerX, pointerY, size, size);
+
+      // Align cursor image hotspot with recorded x/y so it matches click position.
+      // These are tuned for the default cursor pack.
+      const hotspot = usePointerIcon
+        ? { x: 0.5, y: 0.12 }
+        : { x: 0.18, y: 0.2 };
+      const drawX = pointerX - size * hotspot.x;
+      const drawY = pointerY - size * hotspot.y;
+
+      ctx.drawImage(icon, drawX, drawY, size, size);
     } else {
       // Fallback to drawn cursor (also scaled)
       const baseHeight = 1080;
@@ -352,6 +420,7 @@
     applyZoom(scale, zoomFocusX, zoomFocusY);
     if (showScreen) {
       drawScreenShare(drawArgs);
+      drawClickRipples(screenVideo.currentTime);
       drawMouseCursor(pointerState);
     }
     ctx.restore();

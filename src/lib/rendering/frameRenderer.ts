@@ -26,6 +26,7 @@ export interface FrameRenderConfig {
     screenShare: Share;
     webcamVideo: HTMLVideoElement | null;
     pointerRecords: PointerEventRecord[];
+    clickRecords: PointerEventRecord[];
     pointerIconImage: HTMLImageElement | null;
     pointerPressedIconImage: HTMLImageElement | null;
     pointerSize: number;
@@ -34,6 +35,7 @@ export interface FrameRenderConfig {
         showScreen: boolean;
         showWebcam: boolean;
         showMouse: boolean;
+        showClicks: boolean;
     };
 }
 
@@ -66,7 +68,7 @@ export const renderFrameContent = (
     config: FrameRenderConfig,
     currentTime: number
 ): void => {
-    const { ctx, canvas, toggles, pointerRecords, background } = config;
+    const { ctx, canvas, toggles, pointerRecords, clickRecords, background } = config;
     const drawArgs = createDrawArgs(config);
 
     // Calculate screen placement for pointer positioning
@@ -89,6 +91,55 @@ export const renderFrameContent = (
 
     // Calculate zoom state from timeline events
     const { scale, focusX, focusY } = computeZoomState(config.zoomEvents, currentTime);
+
+    const drawClickRipples = (timeSec: number) => {
+        if (!toggles.showClicks || !placement || clickRecords.length === 0) return;
+
+        const timeMs = timeSec * 1000;
+        const rippleDurationMs = 200;
+
+        const baseHeight = 1080;
+        const resolutionScale = config.canvasSize.height / baseHeight;
+        const POINTER_RENDER_SCALE = 2.5;
+        const pointerRenderSize = config.pointerSize * POINTER_RENDER_SCALE * resolutionScale;
+
+        // Find clicks within the ripple window, starting from latest.
+        for (let i = clickRecords.length - 1; i >= 0; i--) {
+            const click = clickRecords[i];
+            if (typeof click.x !== "number" || typeof click.y !== "number") continue;
+
+            const ageMs = timeMs - click.t;
+            if (ageMs < 0) continue;
+            if (ageMs > rippleDurationMs) break;
+
+            const progress = ageMs / rippleDurationMs;
+            const alpha = Math.max(0, 1 - progress);
+
+            const cx = placement.x + click.x * placement.width;
+            const cy = placement.y + click.y * placement.height;
+
+            const radius = pointerRenderSize * (0.2 + progress * 0.3);
+            const lineWidth = Math.max(1, 2 * resolutionScale);
+
+            ctx.save();
+            ctx.globalCompositeOperation = "source-over";
+
+            // Draw Ring (Salmon)
+            ctx.lineWidth = lineWidth;
+            ctx.strokeStyle = `rgba(250, 128, 114, ${alpha})`; // Salmon
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.stroke();
+
+            // Draw Dot (Teal)
+            ctx.fillStyle = `rgba(13, 148, 136, ${alpha})`; // Teal
+            ctx.beginPath();
+            ctx.arc(cx, cy, pointerRenderSize * 0.08, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.restore();
+        }
+    };
 
     // Clear and prepare canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -119,6 +170,11 @@ export const renderFrameContent = (
         drawScreenShare(drawArgs);
     }
 
+    // Draw click ripples (under cursor)
+    if (toggles.showScreen) {
+        drawClickRipples(currentTime);
+    }
+
     // Draw pointer/cursor
     if (toggles.showMouse && pointerRecords.length && placement && pointerState.visible) {
         const cursorShape = pointerState.cursorShape || "default";
@@ -137,10 +193,17 @@ export const renderFrameContent = (
         const pointerTop = placement.y + pointerState.y * placement.height;
 
         if (icon) {
+            // Align cursor image hotspot with recorded x/y so it matches click position.
+            // These are tuned for the default cursor pack.
+            const hotspot = usePointerIcon
+                ? { x: 0.5, y: 0.12 }
+                : { x: 0.18, y: 0.2 };
+            const drawX = pointerLeft - size * hotspot.x;
+            const drawY = pointerTop - size * hotspot.y;
             ctx.drawImage(
                 icon,
-                pointerLeft,
-                pointerTop,
+                drawX,
+                drawY,
                 size,
                 size
             );

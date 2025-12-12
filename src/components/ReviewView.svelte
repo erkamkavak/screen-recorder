@@ -41,6 +41,7 @@
   let includePointerTrack = true;
   let includeWebcamTrack = true;
   let includeAudioTrack = true;
+  let includeClickTrack = true;
 
   let playerFrameEl: HTMLDivElement | null = null;
   let videoFrameWidth = 0;
@@ -722,6 +723,7 @@
               showScreen: true,
               showWebcam: includeWebcamTrack,
               showMouse: includePointerTrack,
+              showClicks: includeClickTrack,
               includeAudio: includeAudioTrack,
             },
             pointerRecords,
@@ -790,6 +792,7 @@
   recordingFPS={$recordingFPS}
   currentSnapshot={currentSnapshot}
   bind:includePointerTrack={includePointerTrack}
+  bind:includeClickTrack={includeClickTrack}
   bind:includeWebcamTrack={includeWebcamTrack}
   bind:includeAudioTrack={includeAudioTrack}
   {pointerStyle}
