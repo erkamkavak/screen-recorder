@@ -3,7 +3,7 @@ import {
   VertAlign,
   webcamShapeOptions,
   WebcamShape,
-} from "../../stores";
+} from "../stores";
 
 type Option<T> = {
   title: string;

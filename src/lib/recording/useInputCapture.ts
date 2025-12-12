@@ -3,8 +3,8 @@ import type {
   InputEventRecord,
   KeyEventRecord,
   PointerEventRecord,
-} from "../../stores";
-import { backendAPI } from "../../utils/backendAPI";
+} from "../stores";
+import { backendAPI } from "../backend/backendAPI";
 
 type ElectronInputPayload = {
   kind: InputEventRecord["kind"];

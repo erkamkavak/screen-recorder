@@ -6,7 +6,7 @@ import {
   createLinearGradientBackground,
   createRainbowAudioBarBackground,
   createSolidBackground,
-} from "./utils/backgroundDrawers";
+} from "../canvas/backgroundDrawers";
 
 /**
  * Recording state

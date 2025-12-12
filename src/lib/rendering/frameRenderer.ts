@@ -3,13 +3,13 @@
  * Handles canvas compositing of screen, webcam, cursor, and effects
  */
 
-import type { CanvasSize, PointerEventRecord, Share, DrawArgs } from "../../stores";
-import type { GeneralLayoutState, ScreenState, WebcamLayoutState, Theme } from "../../stores";
-import type { TimelineZoomEvent } from "../../stores/timeline";
+import type { CanvasSize, PointerEventRecord, Share, DrawArgs } from "../stores";
+import type { GeneralLayoutState, ScreenState, WebcamLayoutState, Theme } from "../stores";
+import type { TimelineZoomEvent } from "../stores/timeline";
 import type { Background } from "./types";
-import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "../../utils/layoutDrawers";
-import { computeZoomState } from "../../utils/timelinePlayback";
-import { computePointerState } from "../../utils/pointerState";
+import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "../canvas/layoutDrawers";
+import { computeZoomState } from "../timeline/timelinePlayback";
+import { computePointerState } from "../pointer/pointerState";
 
 /**
  * Configuration for frame rendering

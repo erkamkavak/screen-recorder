@@ -11,8 +11,8 @@ import { createVideoElement, waitForMetadata, seekMedia, waitForFrameWithTimeout
 import { createEncoder } from "./encoder";
 import { renderFrameContent, loadPointerImage } from "./frameRenderer";
 import { muxEncodedChunks } from "./muxer";
-import { mergeZoomEvents } from "../../utils/timelinePlayback";
-import { getAssetUrlFromFile } from "../../utils/assetStorage";
+import { mergeZoomEvents } from "../timeline/timelinePlayback";
+import { getAssetUrlFromFile } from "../backend/assetStorage";
 
 import cursorPackCursor from "../../assets/cursors/cutecore-pink-cursor.png?url";
 import cursorPackPointer from "../../assets/cursors/cutecore-pink-pointer.png?url";
@@ -28,7 +28,7 @@ export const isWebCodecsAvailable = (): boolean => {
  * Ensure we have a valid array of zoom events
  */
 const ensureZoomEvents = (events: TimelineSnapshot["events"]) => {
-    return events.filter((e) => e.type === "zoom") as import("../../stores/timeline").TimelineZoomEvent[];
+    return events.filter((e) => e.type === "zoom") as import("../stores/timeline").TimelineZoomEvent[];
 };
 
 /**

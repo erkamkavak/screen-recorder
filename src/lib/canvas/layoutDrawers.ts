@@ -112,33 +112,41 @@ export const drawWebcam: DrawFn = (args) => {
     }
   };
 
+  const resetShadow = () => {
+    ctx.shadowColor = "transparent";
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+  };
+
   ctx.save();
 
-  if (webcamLayoutState.shape === WebcamShape.circle) {
-    const centerX = metrics.left + metrics.width / 2;
-    const centerY = metrics.top + metrics.height / 2;
-    const outerRadius = metrics.outerRadius;
-    const innerRadius = Math.max(metrics.innerRadius, 0);
+  try {
+    if (webcamLayoutState.shape === WebcamShape.circle) {
+      const centerX = metrics.left + metrics.width / 2;
+      const centerY = metrics.top + metrics.height / 2;
+      const outerRadius = metrics.outerRadius;
+      const innerRadius = Math.max(metrics.innerRadius, 0);
 
-    const videoAspect = webcamState.height && webcamState.width
-      ? webcamState.height / webcamState.width
-      : 9 / 16;
+      const videoAspect = webcamState.height && webcamState.width
+        ? webcamState.height / webcamState.width
+        : 9 / 16;
 
-    const diameter = innerRadius * 2;
-    let videoWidth = diameter;
-    let videoHeight = videoWidth * videoAspect;
-    if (videoHeight < diameter) {
-      videoHeight = diameter;
-      videoWidth = videoHeight / videoAspect;
-    }
+      const diameter = innerRadius * 2;
+      let videoWidth = diameter;
+      let videoHeight = videoWidth * videoAspect;
+      if (videoHeight < diameter) {
+        videoHeight = diameter;
+        videoWidth = videoHeight / videoAspect;
+      }
 
-    // Draw border ring (no shadow)
-    ctx.beginPath();
-    ctx.arc(centerX, centerY, outerRadius, 0, Math.PI * 2);
-    ctx.fillStyle = borderWidth > 0 ? borderColor : "rgba(0,0,0,0)";
-    ctx.fill();
+      // Draw border ring (no shadow)
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, outerRadius, 0, Math.PI * 2);
+      ctx.fillStyle = borderWidth > 0 ? borderColor : "rgba(0,0,0,0)";
+      ctx.fill();
 
-    // Draw video inside clip with shadow
+      // Draw video inside clip with shadow
       circleClip(ctx, centerX, centerY, innerRadius, () => {
         applyShadow();
         ctx.drawImage(
@@ -148,42 +156,37 @@ export const drawWebcam: DrawFn = (args) => {
           videoWidth,
           videoHeight
         );
-        // Reset shadow after drawing
-        ctx.shadowColor = "transparent";
-        ctx.shadowBlur = 0;
-        ctx.shadowOffsetX = 0;
-        ctx.shadowOffsetY = 0;
+        resetShadow();
       });
-  } else {
-    const outerRadius = metrics.outerRadius;
-    const innerRadius = Math.max(metrics.innerRadius, 0);
+    } else {
+      const outerRadius = metrics.outerRadius;
+      const innerRadius = Math.max(metrics.innerRadius, 0);
 
-    // Border fill (no shadow)
-    roundedRectClip(
-      ctx,
-      metrics.left,
-      metrics.top,
-      metrics.width,
-      metrics.height,
-      outerRadius,
-      () => {
-        if (borderWidth > 0) {
-          ctx.fillStyle = borderColor;
-          ctx.fillRect(metrics.left, metrics.top, metrics.width, metrics.height);
+      // Border fill (no shadow)
+      roundedRectClip(
+        ctx,
+        metrics.left,
+        metrics.top,
+        metrics.width,
+        metrics.height,
+        outerRadius,
+        () => {
+          if (borderWidth > 0) {
+            ctx.fillStyle = borderColor;
+            ctx.fillRect(metrics.left, metrics.top, metrics.width, metrics.height);
+          }
         }
-      }
-    );
-    
-    // Draw video inside inner clip with shadow
+      );
+      
+      // Draw video inside inner clip with shadow
       roundedRectClip(ctx, drawX, drawY, drawWidth, drawHeight, innerRadius, () => {
         applyShadow();
         ctx.drawImage(drawable, drawX, drawY, drawWidth, drawHeight);
-        // Reset shadow after drawing
-        ctx.shadowColor = "transparent";
-        ctx.shadowBlur = 0;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-    });
+        resetShadow();
+      });
+    }
+  } finally {
+    ctx.restore();
   }
 };
 

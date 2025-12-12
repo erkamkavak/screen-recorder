@@ -16,7 +16,7 @@ import {
 } from "../stores";
 import { patchBlob } from "../utils/blobHelpers";
 import { getPreferredMimeType } from "../utils/getPreferredMimeType";
-import { backendAPI, type NativeMouseEvent } from "../utils/backendAPI";
+import { backendAPI, type NativeMouseEvent } from "../backend/backendAPI";
 
 // Types for per-asset recording
 type AssetChunk = {

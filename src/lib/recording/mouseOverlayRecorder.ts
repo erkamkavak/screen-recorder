@@ -1,6 +1,6 @@
 import type { PointerEventRecord } from "../stores";
-import cursorPackCursor from "../assets/cursors/cutecore-pink-cursor.png?url";
-import cursorPackPointer from "../assets/cursors/cutecore-pink-pointer.png?url";
+import cursorPackCursor from "../../assets/cursors/cutecore-pink-cursor.png?url";
+import cursorPackPointer from "../../assets/cursors/cutecore-pink-pointer.png?url";
 
 type MouseOverlayRecorderOptions = {
   width: number;

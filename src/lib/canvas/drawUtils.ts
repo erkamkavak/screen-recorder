@@ -1,5 +1,7 @@
+type Canvas2DContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
+
 export const roundedRectClip = (
-  ctx: CanvasRenderingContext2D,
+  ctx: Canvas2DContext,
   x: number,
   y: number,
   width: number,
@@ -30,7 +32,7 @@ export const roundedRectClip = (
  * Circle clip
  */
 export const circleClip = (
-  ctx: CanvasRenderingContext2D,
+  ctx: Canvas2DContext,
   x: number,
   y: number,
   radius: number,
