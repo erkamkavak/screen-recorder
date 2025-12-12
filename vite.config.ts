@@ -8,6 +8,18 @@ export default defineConfig({
   ],
   base: './',
   build: {
-    assetsDir: 'assets'
-  }
+    assetsDir: 'assets',
+    // Target modern browsers that support BigInt (required by mediabunny)
+    target: 'esnext',
+  },
+  // Also set esbuild target for dev mode
+  esbuild: {
+    target: 'esnext',
+  },
+  optimizeDeps: {
+    // Exclude mediabunny from pre-bundling to avoid BigInt issues
+    esbuildOptions: {
+      target: 'esnext',
+    },
+  },
 })
