@@ -331,8 +331,9 @@ export const customTheme = (() => {
  * Background/layout drawing stuff
  * ------------------------------
  */
+export type Canvas2DContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 export type DrawArgs = {
-  ctx: CanvasRenderingContext2D;
+  ctx: Canvas2DContext;
   theme: Theme;
   canvasSize: CanvasSize;
   activeShare: ScreenShareState["shares"][number] | null | undefined;
@@ -341,6 +342,8 @@ export type DrawArgs = {
   generalLayoutState: GeneralLayoutState;
   webcamLayoutState: WebcamLayoutState;
   screenLayoutState: ScreenState;
+  screenFrame?: CanvasImageSource | VideoFrame;
+  webcamFrame?: CanvasImageSource | VideoFrame;
 };
 export type DrawFn = (
   args: DrawArgs,

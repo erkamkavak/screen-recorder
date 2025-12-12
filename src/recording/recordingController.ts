@@ -138,11 +138,13 @@ const finalizeRecordingAssets = async (
       for (const chunk of assetChunks) {
         const patchedBlob = await patchBlob(chunk.blob, durationMs);
         const filePath = await saveAssetToStorage(patchedBlob, chunk.fileName);
+        const fallbackMime =
+          chunk.type === "audio" ? "audio/webm;codecs=opus" : "video/mp4";
         assets[chunk.type] = {
           type: chunk.type,
           fileName: chunk.fileName,
           filePath,
-          mimeType: patchedBlob.type || chunk.blob.type || "video/webm",
+          mimeType: patchedBlob.type || chunk.blob.type || fallbackMime,
         };
       }
     }
@@ -150,9 +152,9 @@ const finalizeRecordingAssets = async (
     if (nativeRecordingFilePath) {
       assets.screen = {
         type: "screen",
-        fileName: "screen.webm",
+        fileName: "screen.mp4",
         filePath: nativeRecordingFilePath,
-        mimeType: "video/webm",
+        mimeType: "video/mp4",
       };
       nativeRecordingFilePath = null;
     }
@@ -252,7 +254,7 @@ const startNativeScreenRecording = async (
       captureType,
       includeCursor: false,
       frameRate: fps || 30,
-      fileName: `screen.webm`,
+      fileName: `screen.mp4`,
     });
   } catch (error) {
     console.error("Failed to start native recording:", error);

@@ -1,7 +1,9 @@
 export const getPreferredMimeType = (options?: { includeAudio?: boolean; preferredExtension?: string }) => {
   const includeAudio = options?.includeAudio ?? false;
   const preferredExtension = options?.preferredExtension?.toLowerCase();
-  const preferMp4 = preferredExtension === "mp4";
+  const preferMp4 = preferredExtension
+    ? preferredExtension === "mp4"
+    : true;
   const preferredVideo: { mimeType: string; ext: string }[] = preferMp4
     ? [
         { mimeType: "video/mp4;codecs=h264", ext: "mp4" },
@@ -36,12 +38,12 @@ export const getPreferredMimeType = (options?: { includeAudio?: boolean; preferr
       return false;
     }
   });
-  // Final fallback to bare webm
-  return found ?? { mimeType: "video/webm", ext: "webm" };
+  // Final fallback to bare mp4
+  return found ?? { mimeType: "video/mp4", ext: "mp4" };
 };
 
 const MEDIA_TYPES = ["video"];
-const FILE_EXTENSIONS = ["webm", "ogg", "x-matroska", "mp4"]; // favor webm first
+const FILE_EXTENSIONS = ["mp4", "webm", "ogg", "x-matroska"]; // favor MP4 first
 const CODECS = [
   "vp9",
   "vp9.0",

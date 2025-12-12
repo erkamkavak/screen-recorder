@@ -183,7 +183,7 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle("rendering:start", async (_event, fileName = "rendered.webm") => {
+  ipcMain.handle("rendering:start", async (_event, fileName = "rendered.mp4") => {
     const dir = ensureRecordingDir();
     const safeName = `${Date.now()}-${fileName}`;
     const filePath = path.join(dir, safeName);

@@ -9,6 +9,13 @@ import { HorizAlign, VertAlign, WebcamShape } from "../stores";
 import { circleClip, roundedRectClip } from "./drawUtils";
 import { calculateWebcamMetrics } from "./webcamMetrics";
 
+const toCanvasImageSource = (source: CanvasImageSource | VideoFrame | undefined | null): CanvasImageSource | null => {
+  if (!source) {
+    return null;
+  }
+  return source as unknown as CanvasImageSource;
+};
+
 export type ScreenPlacement = {
   x: number;
   y: number;
@@ -23,7 +30,7 @@ export const calculateScreenPlacement = (
   screenLayoutState: ScreenState,
   generalLayoutState: GeneralLayoutState
 ): ScreenPlacement | null => {
-  if (!activeShare || !activeShare.preview) return null;
+  if (!activeShare || !activeShare.width || !activeShare.height) return null;
 
   const { width, height } = canvasSize;
   if (!width || !height) return null;
@@ -71,7 +78,10 @@ export const calculateScreenPlacement = (
 };
 
 export const drawWebcam: DrawFn = (args) => {
-  if (!args.webcamState.stream || !args.webcamState.preview) return;
+  if (!args.webcamState.stream && !args.webcamFrame) return;
+  const source = args.webcamFrame ?? args.webcamState.preview;
+  const drawable = toCanvasImageSource(source);
+  if (!drawable) return;
 
   const { ctx, webcamState, webcamLayoutState, canvasSize } = args;
 
@@ -129,21 +139,21 @@ export const drawWebcam: DrawFn = (args) => {
     ctx.fill();
 
     // Draw video inside clip with shadow
-    circleClip(ctx, centerX, centerY, innerRadius, () => {
-      applyShadow();
-      ctx.drawImage(
-        webcamState.preview,
-        centerX - videoWidth / 2,
-        centerY - videoHeight / 2,
-        videoWidth,
-        videoHeight
-      );
-      // Reset shadow after drawing
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetX = 0;
-      ctx.shadowOffsetY = 0;
-    });
+      circleClip(ctx, centerX, centerY, innerRadius, () => {
+        applyShadow();
+        ctx.drawImage(
+          drawable,
+          centerX - videoWidth / 2,
+          centerY - videoHeight / 2,
+          videoWidth,
+          videoHeight
+        );
+        // Reset shadow after drawing
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 0;
+      });
   } else {
     const outerRadius = metrics.outerRadius;
     const innerRadius = Math.max(metrics.innerRadius, 0);
@@ -165,12 +175,12 @@ export const drawWebcam: DrawFn = (args) => {
     );
     
     // Draw video inside inner clip with shadow
-    roundedRectClip(ctx, drawX, drawY, drawWidth, drawHeight, innerRadius, () => {
-      applyShadow();
-      ctx.drawImage(webcamState.preview, drawX, drawY, drawWidth, drawHeight);
-      // Reset shadow after drawing
-      ctx.shadowColor = "transparent";
-      ctx.shadowBlur = 0;
+      roundedRectClip(ctx, drawX, drawY, drawWidth, drawHeight, innerRadius, () => {
+        applyShadow();
+        ctx.drawImage(drawable, drawX, drawY, drawWidth, drawHeight);
+        // Reset shadow after drawing
+        ctx.shadowColor = "transparent";
+        ctx.shadowBlur = 0;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = 0;
     });
@@ -181,35 +191,35 @@ export const drawWebcam: DrawFn = (args) => {
  * Drawing screen share
  */
 export const drawScreenShare: DrawFn = (args) => {
-  if (
-    args.activeShare?.preview &&
-    args.activeShare.preview instanceof HTMLVideoElement
-  ) {
-    const placement = calculateScreenPlacement(
-      args.canvasSize,
-      args.activeShare,
-      args.screenLayoutState,
-      args.generalLayoutState
-    );
-    if (!placement) return;
-    roundedRectClip(
-      args.ctx,
-      placement.x,
-      placement.y,
-      placement.width,
-      placement.height,
-      placement.cornerRadius,
-      () => {
-        args.ctx.drawImage(
-          args.activeShare.preview,
-          placement.x,
-          placement.y,
-          placement.width,
-          placement.height
-        );
-      }
-    );
-  }
+  const placement = calculateScreenPlacement(
+    args.canvasSize,
+    args.activeShare,
+    args.screenLayoutState,
+    args.generalLayoutState
+  );
+  if (!placement) return;
+
+  const screenSource = args.screenFrame ?? args.activeShare?.preview;
+  const drawable = toCanvasImageSource(screenSource);
+  if (!drawable) return;
+
+  roundedRectClip(
+    args.ctx,
+    placement.x,
+    placement.y,
+    placement.width,
+    placement.height,
+    placement.cornerRadius,
+    () => {
+      args.ctx.drawImage(
+        drawable,
+        placement.x,
+        placement.y,
+        placement.width,
+        placement.height
+      );
+    }
+  );
 };
 
 /**
