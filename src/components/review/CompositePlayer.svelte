@@ -310,15 +310,21 @@
       : pointerIconImage;
     
     if (icon) {
-      const POINTER_RENDER_SCALE = 5;
-      const size = pointerIndicatorSize * POINTER_RENDER_SCALE;
+      const baseHeight = 1080;
+      const resolutionScale = canvasSize.height / baseHeight;
+      const POINTER_RENDER_SCALE = 2.5;
+      const size = pointerIndicatorSize * POINTER_RENDER_SCALE * resolutionScale;
+      
       ctx.drawImage(icon, pointerX, pointerY, size, size);
     } else {
-      // Fallback to drawn cursor
+      // Fallback to drawn cursor (also scaled)
+      const baseHeight = 1080;
+      const resolutionScale = canvasSize.height / baseHeight;
+      const size = pointerIndicatorSize * resolutionScale;
+      
       ctx.fillStyle = cursorShape === "pointer" ? "#000000" : "#ffffff";
       ctx.strokeStyle = "#000000";
-      ctx.lineWidth = 1;
-      const size = pointerIndicatorSize;
+      ctx.lineWidth = resolutionScale;
       
       // Draw simple cursor shape with transform: translate(0%, -100%)
       ctx.beginPath();

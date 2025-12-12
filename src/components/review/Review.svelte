@@ -59,6 +59,12 @@
   export let renderFormat: RenderFormat = "webm";
   export let renderFormatOptions: RenderFormatOption[] = [];
   export let onRenderFormatChange: (format: RenderFormat) => void = () => {};
+  export let resolutionPresets: readonly { id: string; label: string; scale: number }[] = [];
+  export let selectedResolutionPreset: string = "scale-100";
+  export let onResolutionPresetChange: (id: string) => void = () => {};
+  export let frameRatePresets: readonly { id: string; label: string; fps: number | "original" }[] = [];
+  export let selectedFrameRatePreset: string = "fps-original";
+  export let onFrameRatePresetChange: (id: string) => void = () => {};
 
   export let videoDuration = 0;
   export let videoCurrentTime = 0;
@@ -68,6 +74,7 @@
   export let renderProgress = 0;
   export let playerFrameEl: HTMLDivElement | null = null;
   export let downloadEditedVideo: () => Promise<void>;
+  export let onCancelRender: () => void = () => {};
   export let resetToRecorder: () => void;
   export let addZoomForClick: (event: PointerEventRecord, seconds?: number) => void;
   export let timelineDuration = 0;
@@ -85,6 +92,16 @@
   const handleRenderFormatSelect = (event: Event) => {
     const select = event.currentTarget as HTMLSelectElement;
     onRenderFormatChange(select.value as RenderFormat);
+  };
+
+  const handleResolutionPresetSelect = (event: Event) => {
+    const select = event.currentTarget as HTMLSelectElement;
+    onResolutionPresetChange(select.value);
+  };
+
+  const handleFrameRatePresetSelect = (event: Event) => {
+    const select = event.currentTarget as HTMLSelectElement;
+    onFrameRatePresetChange(select.value);
   };
 
   const clampBetween = (value: number, minValue: number, maxValue: number) =>
@@ -264,6 +281,40 @@
         </div>
       </div>
 
+      {#if resolutionPresets.length}
+        <div class="format-field">
+          <label class="field-label" for="resolution-preset-select">Resolution</label>
+          <div class="select-wrapper">
+            <select
+              id="resolution-preset-select"
+              value={selectedResolutionPreset}
+              on:change={handleResolutionPresetSelect}
+            >
+              {#each resolutionPresets as preset}
+                <option value={preset.id}>{preset.label}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      {/if}
+
+      {#if frameRatePresets.length}
+        <div class="format-field">
+          <label class="field-label" for="framerate-preset-select">Frame rate</label>
+          <div class="select-wrapper">
+            <select
+              id="framerate-preset-select"
+              value={selectedFrameRatePreset}
+              on:change={handleFrameRatePresetSelect}
+            >
+              {#each frameRatePresets as preset}
+                <option value={preset.id}>{preset.label}</option>
+              {/each}
+            </select>
+          </div>
+        </div>
+      {/if}
+
       <PointerStyleControls
         pointerSize={pointerSize}
         pointerIconSelection={pointerIconSelection}
@@ -282,6 +333,11 @@
             Render and download
           {/if}
         </button>
+        {#if isRenderingVideo}
+          <button class="danger" on:click={onCancelRender}>
+            Cancel render
+          </button>
+        {/if}
         <button class="secondary" on:click={resetToRecorder}>Back to recorder</button>
       </div>
 
@@ -492,6 +548,26 @@
     border: 1px solid #cbd5f5;
     font-size: 0.95rem;
     background: #fff;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+  }
+
+  .select-wrapper {
+    position: relative;
+  }
+
+  .select-wrapper::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    right: 0.6rem;
+    top: 50%;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-right: 2px solid #94a3b8;
+    border-bottom: 2px solid #94a3b8;
+    transform: translateY(-70%) rotate(45deg);
   }
 
   .review-aside h1 {

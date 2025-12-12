@@ -10,7 +10,7 @@
     screenLayoutState,
     webcamLayoutState,
   } from "../stores";
-  import type { PointerEventRecord } from "../stores";
+  import type { PointerEventRecord, RecordingAsset } from "../stores";
   import Review from "./review/Review.svelte";
   import cursorPackCursor from "../assets/cursors/cutecore-pink-cursor.png?url";
   import cursorPackPointer from "../assets/cursors/cutecore-pink-pointer.png?url";
@@ -18,10 +18,11 @@
   import { onDestroy, onMount } from "svelte";
   import { backendAPI } from "../utils/backendAPI";
   import {
-    renderCompositeRecording,
-    type RenderCompositeOptions,
+    render,
+    isWebCodecsAvailable,
+    type RenderOptions,
     type RenderResult,
-  } from "../utils/renderEditedRecording";
+  } from "../lib/rendering";
   import {
     computePointerState,
     getPointerRecords,
@@ -85,7 +86,7 @@
     { value: "mp4", label: "MP4 (H.264)" },
     { value: "webm", label: "WebM (VP9)" },
   ];
-  let renderFormat: RenderFormat = "webm";
+  let renderFormat: RenderFormat = "mp4";
   let supportedRenderFormats: Record<RenderFormat, boolean> = { mp4: true, webm: true };
   let renderFormatOptions: RenderFormatOption[] = [];
   $: renderFormatOptions = baseRenderFormatOptions.map((option) => ({
@@ -93,6 +94,33 @@
     label: option.label,
     supported: supportedRenderFormats[option.value],
   }));
+  type ResolutionPresetId = "scale-100" | "scale-75" | "scale-50";
+  type ResolutionPreset = { id: ResolutionPresetId; label: string; scale: number };
+  const baseResolutionPresets: Omit<ResolutionPreset, "label">[] = [
+    { id: "scale-100", scale: 1 },
+    { id: "scale-75", scale: 0.75 },
+    { id: "scale-50", scale: 0.5 },
+  ];
+  let selectedResolutionPreset: ResolutionPresetId = "scale-100";
+  $: resolutionPresets = baseResolutionPresets.map((preset) => {
+    const scaledWidth = Math.max(2, Math.round($canvasDimensions.width * preset.scale));
+    const scaledHeight = Math.max(2, Math.round($canvasDimensions.height * preset.scale));
+    const suffix = preset.scale === 1 ? "(100%)" : preset.scale === 0.75 ? "(75%)" : "(50%)";
+    return {
+      id: preset.id,
+      scale: preset.scale,
+      label: `${scaledWidth} × ${scaledHeight} ${suffix}`,
+    } satisfies ResolutionPreset;
+  });
+
+  type FrameRatePresetId = "fps-original" | "fps-60" | "fps-30";
+  type FrameRatePreset = { id: FrameRatePresetId; label: string; fps: number | "original" };
+  const frameRatePresets: FrameRatePreset[] = [
+    { id: "fps-original", label: "Original", fps: "original" },
+    { id: "fps-60", label: "60 fps", fps: 60 },
+    { id: "fps-30", label: "30 fps", fps: 30 },
+  ];
+  let selectedFrameRatePreset: FrameRatePresetId = "fps-original";
   
   let currentSnapshot = timelineStore.snapshot();
   // Reactive snapshot so zoom/trim changes reflect in composited preview
@@ -191,6 +219,14 @@
 
   const handleRenderFormatChange = (format: RenderFormat) => {
     renderFormat = format;
+  };
+
+  const handleResolutionPresetChange = (id: ResolutionPresetId) => {
+    selectedResolutionPreset = id;
+  };
+
+  const handleFrameRatePresetChange = (id: FrameRatePresetId) => {
+    selectedFrameRatePreset = id;
   };
 
   const hexToRgba = (hex: string, alpha = 1) => {
@@ -601,80 +637,140 @@
     $appView = "recorder";
   };
 
-  const buildRenderOptions = (onProgress?: (current: number, end: number) => void): RenderCompositeOptions => ({
-    canvasSize: $canvasDimensions,
-    generalLayoutState: $generalLayoutState,
-    screenLayoutState: $screenLayoutState,
-    webcamLayoutState: $webcamLayoutState,
-    theme: $activeTheme,
-    background: $activeBackground,
-    frameRate: $recordingFPS,
-    toggles: {
-      showScreen: true,
-      showWebcam: includeWebcamTrack,
-      showMouse: includePointerTrack,
-      includeAudio: includeAudioTrack,
-    },
-    pointerRecords,
-    pointerIconUrl: pointerIconImageUrl,
-    pointerIconPressedUrl: pointerIconPressedImageUrl,
-    pointerSize: pointerIndicatorSize,
-    outputExtension: renderFormat,
-    onProgress,
-  });
+  const getExportScale = (): number => {
+    const preset = resolutionPresets.find((p) => p.id === selectedResolutionPreset);
+    return preset?.scale ?? 1;
+  };
+
+  const getExportCanvasSize = () => {
+    const scale = getExportScale();
+    const width = Math.max(2, Math.round($canvasDimensions.width * scale));
+    const height = Math.max(2, Math.round($canvasDimensions.height * scale));
+    return {
+      title: $canvasDimensions.title,
+      width,
+      height,
+    };
+  };
+
+  const getExportFrameRate = () => {
+    const preset = frameRatePresets.find((p) => p.id === selectedFrameRatePreset);
+    if (!preset || preset.fps === "original") {
+      return $recordingFPS || 30;
+    }
+    return preset.fps;
+  };
+
+  const isMp4Asset = (asset?: RecordingAsset | null): boolean => {
+    if (!asset) return false;
+    const mime = asset.mimeType?.toLowerCase() ?? "";
+    if (mime.startsWith("video/mp4") || mime.includes("avc") || mime.includes("h264")) {
+      return true;
+    }
+    const extension = asset.fileName.split(".").pop()?.toLowerCase();
+    return extension === "mp4";
+  };
+
+  let currentCancelToken: { cancelled: boolean } | null = null;
+
+  const cancelCurrentRender = () => {
+    if (currentCancelToken) {
+      currentCancelToken.cancelled = true;
+    }
+  };
 
   const downloadEditedVideo = async () => {
     if (!$lastRecording) return;
+    if (isRenderingVideo) return;
     isRenderingVideo = true;
     renderProgress = 0;
+
+    if (currentCancelToken) {
+      currentCancelToken.cancelled = true;
+    }
+    currentCancelToken = { cancelled: false };
 
     const recordingBaseName = $lastRecording.fileName
       ? $lastRecording.fileName.replace(/\.[^.]+$/, "")
       : "recording";
     const getDownloadName = (ext: string) => `edited-${recordingBaseName}.${ext}`;
 
-    let cleanupPath: string | null = null;
     try {
-      const result: RenderResult = await renderCompositeRecording(
-        $lastRecording.assets,
-        $lastRecording.duration,
-        timelineStore.snapshot(),
-        buildRenderOptions((current, end) => {
-          renderProgress = end ? Math.min(100, Math.round((current / end) * 100)) : 0;
-        })
-      );
+      // Check WebCodecs availability
+      if (!isWebCodecsAvailable()) {
+        throw new Error("WebCodecs API is not available in this browser. Please use a modern browser like Chrome or Edge.");
+      }
 
-      if (result.type === "file") {
-        cleanupPath = result.filePath;
+      console.log("[Render] Using WebCodecs for MP4 output");
+      
+      let result: RenderResult;
+      
+      try {
+        result = await render(
+          $lastRecording.assets,
+          $lastRecording.duration,
+          timelineStore.snapshot(),
+          {
+            frameRate: getExportFrameRate(),
+            canvasSize: getExportCanvasSize(),
+            generalLayoutState: $generalLayoutState,
+            screenLayoutState: $screenLayoutState,
+            webcamLayoutState: $webcamLayoutState,
+            theme: $activeTheme,
+            background: $activeBackground,
+            toggles: {
+              showScreen: true,
+              showWebcam: includeWebcamTrack,
+              showMouse: includePointerTrack,
+              includeAudio: includeAudioTrack,
+            },
+            pointerRecords,
+            pointerIconUrl: pointerIconImageUrl,
+            pointerIconPressedUrl: pointerIconPressedImageUrl,
+            pointerSize: pointerIndicatorSize,
+            cancelToken: currentCancelToken!,
+            onProgress: (current, total) => {
+              renderProgress = Math.round((current / total) * 100);
+            },
+          }
+        );
+      } catch (error) {
+        if (error instanceof Error && error.message === "Render cancelled") {
+          console.log("[Render] Render cancelled");
+          return;
+        }
+        throw error;
+      }
+
+      // Handle blob result (WebCodecs or MediaRecorder)
+      if (result && "blob" in result) {
+        const url = URL.createObjectURL(result.blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = getDownloadName(result.ext ?? "mp4");
+        document.body.appendChild(anchor);
+        anchor.click();
+        setTimeout(() => {
+          URL.revokeObjectURL(url);
+          anchor.remove();
+        }, 1000);
+      } else if (result && result.type === "file") {
+        // Handle file result (legacy path)
         const savedPath = await backendAPI.saveRenderedFile(
           result.filePath,
-          getDownloadName(result.ext ?? "webm")
+          getDownloadName(result.ext ?? "mp4")
         );
         if (!savedPath) {
           console.warn("Rendered file save cancelled");
           return;
         }
-        return;
       }
-
-      const url = URL.createObjectURL(result.blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = getDownloadName(result.ext ?? "webm");
-      document.body.appendChild(anchor);
-      anchor.click();
-      setTimeout(() => {
-        URL.revokeObjectURL(url);
-        anchor.remove();
-      }, 1000);
     } catch (error) {
       console.error("Failed to render edited video", error);
     } finally {
       isRenderingVideo = false;
       renderProgress = 0;
-      if (cleanupPath) {
-        await backendAPI.cleanupRecordingAssets([cleanupPath]);
-      }
+      currentCancelToken = null;
     }
   };
 
@@ -717,9 +813,16 @@
   {isRenderingVideo}
   {renderProgress}
   {downloadEditedVideo}
+  onCancelRender={cancelCurrentRender}
   {resetToRecorder}
   {addZoomForClick}
   renderFormat={renderFormat}
   renderFormatOptions={renderFormatOptions}
   onRenderFormatChange={handleRenderFormatChange}
+  resolutionPresets={resolutionPresets}
+  selectedResolutionPreset={selectedResolutionPreset}
+  onResolutionPresetChange={handleResolutionPresetChange}
+  frameRatePresets={frameRatePresets}
+  selectedFrameRatePreset={selectedFrameRatePreset}
+  onFrameRatePresetChange={handleFrameRatePresetChange}
 />
