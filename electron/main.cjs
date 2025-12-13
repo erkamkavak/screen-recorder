@@ -532,6 +532,67 @@ app.whenReady().then(() => {
     }
   });
 
+  // Native transcription APIs (provider-based, implemented in Rust)
+  ipcMain.handle("native-transcription:list-providers", async () => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.transcriptionListProviders();
+    } catch (error) {
+      console.error("Failed to list transcription providers:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-transcription:submit", async (_event, request) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.transcriptionSubmit(request);
+    } catch (error) {
+      console.error("Failed to submit transcription:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-transcription:get-job", async (_event, jobId) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.transcriptionGetJob(jobId);
+    } catch (error) {
+      console.error("Failed to get transcription job:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-transcription:get-result", async (_event, jobId) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.transcriptionGetResult(jobId);
+    } catch (error) {
+      console.error("Failed to get transcription result:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-transcription:cancel", async (_event, jobId) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.transcriptionCancel(jobId);
+    } catch (error) {
+      console.error("Failed to cancel transcription job:", error);
+      throw error;
+    }
+  });
+
   createWindow();
 
   app.on("activate", () => {

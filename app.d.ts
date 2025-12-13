@@ -54,6 +54,34 @@ declare global {
     fileName?: string;
   }
 
+  interface TranscriptionSegment {
+    startMs: number;
+    endMs: number;
+    text: string;
+    speaker?: string | null;
+  }
+
+  interface TranscriptionResult {
+    provider: string;
+    language?: string | null;
+    segments: TranscriptionSegment[];
+    raw?: string | null;
+  }
+
+  interface TranscriptionJobInfo {
+    jobId: string;
+    provider: string;
+    status: string;
+  }
+
+  interface TranscriptionJobSnapshot {
+    jobId: string;
+    provider: string;
+    status: string;
+    errorMessage?: string | null;
+    progress?: number | null;
+  }
+
   interface ElectronAPI {
     // Desktop capture (Electron built-in)
     listDesktopSources?: (options?: DesktopCaptureOptions) => Promise<DesktopCaptureSourceSummary[]>;
@@ -90,6 +118,13 @@ declare global {
     getRecordingMouseEvents?: () => Promise<NativeMouseEvent[]>;
     clearRecordingMouseEvents?: () => Promise<boolean>;
     getCurrentMousePosition?: () => Promise<NativeMouseEvent | null>;
+
+    // Native transcription
+    listTranscriptionProviders?: () => Promise<string[]>;
+    submitTranscription?: (request: any) => Promise<TranscriptionJobInfo>;
+    getTranscriptionJob?: (jobId: string) => Promise<TranscriptionJobSnapshot | null>;
+    getTranscriptionResult?: (jobId: string) => Promise<TranscriptionResult | null>;
+    cancelTranscription?: (jobId: string) => Promise<boolean>;
   }
 
   interface Window {

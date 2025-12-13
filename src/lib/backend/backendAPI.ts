@@ -50,6 +50,47 @@ export const listDesktopSources = async (options?: any): Promise<DesktopSource[]
   throw new Error("Desktop capture sources not available outside Electron");
 };
 
+// Native transcription APIs
+export const listTranscriptionProviders = async (): Promise<string[]> => {
+  if (isElectron) {
+    try {
+      return await window.electronAPI.listTranscriptionProviders?.() ?? [];
+    } catch (error) {
+      console.error("Failed to list transcription providers:", error);
+      return [];
+    }
+  }
+  throw new Error("Transcription not available outside Electron");
+};
+
+export const submitTranscription = async (request: any): Promise<TranscriptionJobInfo> => {
+  if (isElectron) {
+    return await window.electronAPI.submitTranscription?.(request);
+  }
+  throw new Error("Transcription not available outside Electron");
+};
+
+export const getTranscriptionJob = async (jobId: string): Promise<TranscriptionJobSnapshot | null> => {
+  if (isElectron) {
+    return await window.electronAPI.getTranscriptionJob?.(jobId) ?? null;
+  }
+  throw new Error("Transcription not available outside Electron");
+};
+
+export const getTranscriptionResult = async (jobId: string): Promise<TranscriptionResult | null> => {
+  if (isElectron) {
+    return await window.electronAPI.getTranscriptionResult?.(jobId) ?? null;
+  }
+  throw new Error("Transcription not available outside Electron");
+};
+
+export const cancelTranscription = async (jobId: string): Promise<boolean> => {
+  if (isElectron) {
+    return await window.electronAPI.cancelTranscription?.(jobId) ?? false;
+  }
+  throw new Error("Transcription not available outside Electron");
+};
+
 // Input Capture APIs
 export const startGlobalInputCapture = async (): Promise<void> => {
   if (isElectron) {
@@ -270,6 +311,34 @@ export interface NativeMouseEvent {
   cursorShape: string; // "default", "pointer", "text", "crosshair", "move", "wait", etc.
 }
 
+export interface TranscriptionSegment {
+  startMs: number;
+  endMs: number;
+  text: string;
+  speaker?: string | null;
+}
+
+export interface TranscriptionResult {
+  provider: string;
+  language?: string | null;
+  segments: TranscriptionSegment[];
+  raw?: string | null;
+}
+
+export interface TranscriptionJobInfo {
+  jobId: string;
+  provider: string;
+  status: string;
+}
+
+export interface TranscriptionJobSnapshot {
+  jobId: string;
+  provider: string;
+  status: string;
+  errorMessage?: string | null;
+  progress?: number | null;
+}
+
 export const getRecordingMouseEvents = async (): Promise<NativeMouseEvent[]> => {
   if (isElectron) {
     try {
@@ -344,6 +413,13 @@ export const backendAPI = {
   getRecordingMouseEvents,
   clearRecordingMouseEvents,
   getCurrentMousePosition,
+
+  // Transcription
+  listTranscriptionProviders,
+  submitTranscription,
+  getTranscriptionJob,
+  getTranscriptionResult,
+  cancelTranscription,
 
   // Rendering
   startRenderStream,

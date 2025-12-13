@@ -57,4 +57,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getRecordingMouseEvents: () => ipcRenderer.invoke("native-recording:get-mouse-events"),
   clearRecordingMouseEvents: () => ipcRenderer.invoke("native-recording:clear-mouse-events"),
   getCurrentMousePosition: () => ipcRenderer.invoke("native-recording:get-current-mouse"),
+
+  // Native transcription APIs
+  listTranscriptionProviders: () => ipcRenderer.invoke("native-transcription:list-providers"),
+  submitTranscription: (request) => ipcRenderer.invoke("native-transcription:submit", request),
+  getTranscriptionJob: (jobId) => ipcRenderer.invoke("native-transcription:get-job", jobId),
+  getTranscriptionResult: (jobId) => ipcRenderer.invoke("native-transcription:get-result", jobId),
+  cancelTranscription: (jobId) => ipcRenderer.invoke("native-transcription:cancel", jobId),
 });
