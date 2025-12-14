@@ -37,7 +37,29 @@ export const waitForMetadata = (media: HTMLMediaElement): Promise<void> => {
  * Seek a media element to a specific time
  */
 export const seekMedia = (media: HTMLMediaElement, time: number): Promise<void> => {
+    const targetTime = Number.isFinite(time) ? Math.max(0, time) : 0;
+    const currentTime = Number.isFinite(media.currentTime) ? media.currentTime : 0;
+    const epsilon = 0.001;
+    if (Math.abs(currentTime - targetTime) <= epsilon) {
+        return Promise.resolve();
+    }
+
+    const boundedTargetTime =
+        Number.isFinite(media.duration) && media.duration > 0
+            ? Math.min(targetTime, Math.max(0, media.duration - epsilon))
+            : targetTime;
+
     return new Promise((resolve, reject) => {
+        const timeoutMs = 5000;
+        let timeoutId: number | undefined;
+
+        const cleanup = () => {
+            if (timeoutId !== undefined) {
+                clearTimeout(timeoutId);
+                timeoutId = undefined;
+            }
+        };
+
         const onSeeked = () => {
             cleanup();
             resolve();
@@ -48,14 +70,25 @@ export const seekMedia = (media: HTMLMediaElement, time: number): Promise<void> 
             reject(new Error("Seek failed"));
         };
 
-        const cleanup = () => {
-            media.removeEventListener("seeked", onSeeked);
-            media.removeEventListener("error", onError);
-        };
+        media.addEventListener("seeked", onSeeked, { once: true });
+        media.addEventListener("error", onError, { once: true });
 
-        media.addEventListener("seeked", onSeeked);
-        media.addEventListener("error", onError);
-        media.currentTime = time;
+        timeoutId = window.setTimeout(() => {
+            cleanup();
+            reject(new Error("Seek timeout"));
+        }, timeoutMs);
+
+        try {
+            const anyMedia = media as any;
+            if (typeof anyMedia.fastSeek === "function") {
+                anyMedia.fastSeek(boundedTargetTime);
+            } else {
+                media.currentTime = boundedTargetTime;
+            }
+        } catch (e) {
+            cleanup();
+            reject(e instanceof Error ? e : new Error("Seek failed"));
+        }
     });
 };
 

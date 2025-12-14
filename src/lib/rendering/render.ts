@@ -20,6 +20,7 @@ import { renderFrameContent, loadPointerImage } from "./frameRenderer";
 import { muxEncodedChunks } from "./muxer";
 import { mergeZoomEvents } from "../timeline/timelinePlayback";
 import { getAssetUrlFromFile } from "../backend/assetStorage";
+import { VideoPool } from "./videoPool";
 
 import cursorPackCursor from "../../assets/cursors/cutecore-pink-cursor.png?url";
 import cursorPackPointer from "../../assets/cursors/cutecore-pink-pointer.png?url";
@@ -77,15 +78,17 @@ export const render = async (
         throw new Error("Unable to load screen asset for rendering");
     }
 
-    // Create and load video elements
-    const screenVideo = createVideoElement(screenUrl);
-    await waitForMetadata(screenVideo);
-
     const webcamUrl = options.toggles.showWebcam ? await loadAssetUrl(assets.webcam) : null;
-    const webcamVideo = webcamUrl ? createVideoElement(webcamUrl) : null;
-    if (webcamVideo) {
-        await waitForMetadata(webcamVideo);
-    }
+
+    // Initialize video pool
+    const poolSize = 16;
+    const videoPool = new VideoPool(poolSize, screenUrl, webcamUrl);
+    await videoPool.initialize();
+
+    // Use the first worker's videos for initial setup and dimensions
+    const mainWorker = videoPool.getWorker(0);
+    const screenVideo = mainWorker.screenVideo;
+    const webcamVideo = mainWorker.webcamVideo;
 
     // Load pointer icons
     const pointerIconImage = await loadPointerImage(options.pointerIconUrl ?? cursorPackCursor);
@@ -139,6 +142,7 @@ export const render = async (
         pointerPressedIconImage,
         pointerSize: options.pointerSize ?? 18,
         zoomEvents,
+        captions: options.captions,
         toggles: options.toggles,
     };
 
@@ -175,43 +179,19 @@ export const render = async (
         try {
             encoder.close();
         } catch { }
-        try {
-            screenVideo.pause();
-            screenVideo.src = "";
-        } catch { }
-        if (webcamVideo) {
-            try {
-                webcamVideo.pause();
-                webcamVideo.src = "";
-            } catch { }
-        }
+        videoPool.destroy();
     };
 
     // Prepare videos for playback
     const shouldCaptureWebcam = Boolean(webcamVideo && options.toggles.showWebcam);
 
+    // Prime the first videos (helps metadata/decoder warmup)
     await seekMedia(screenVideo, trimStart);
     if (webcamVideo) {
         await seekMedia(webcamVideo, trimStart);
     }
 
-    screenVideo.playbackRate = 1;
-    screenVideo.loop = false;
-    try {
-        await screenVideo.play().catch(() => { });
-    } catch (error) {
-        console.warn("[Render] Screen video play failed", error);
-    }
-
-    if (shouldCaptureWebcam && webcamVideo) {
-        webcamVideo.playbackRate = 1;
-        webcamVideo.loop = false;
-        try {
-            await webcamVideo.play().catch(() => { });
-        } catch (error) {
-            console.warn("[Render] Webcam video play failed", error);
-        }
-    }
+    // Playback handled via seeking in the loop to ensure frame accuracy
 
     try {
         // Timing stats
@@ -223,30 +203,58 @@ export const render = async (
         // Phase 1: Render all frames and queue to encoder (non-blocking)
         console.log("[Render] Phase 1: Rendering and queueing frames...");
 
+        // Start producer loops: workers continuously seek+capture into an ordered buffer
+        videoPool.startPrefetch({
+            totalFrames,
+            trimStart,
+            trimEnd,
+            frameDurationSec,
+            shouldCaptureWebcam,
+        });
+
         for (let frameIndex = 0; frameIndex < totalFrames; frameIndex++) {
             if (cancelToken?.cancelled) {
                 throw new Error("Render cancelled");
             }
 
-            // Wait for source video to reach the correct time (with timeout)
-            const frameTime = Math.min(trimEnd, trimStart + frameIndex * frameDurationSec);
+            // Wait for the prepared frame (produced by the pool)
             const waitStart = performance.now();
-
-            try {
-                const framePromises: Promise<void>[] = [waitForFrameWithTimeout(screenVideo, frameTime)];
-                if (shouldCaptureWebcam && webcamVideo) {
-                    framePromises.push(waitForFrameWithTimeout(webcamVideo, frameTime));
-                }
-                await Promise.all(framePromises);
-            } catch (e) {
-                console.warn(`[Render] Error waiting for frame ${frameIndex + 1}:`, e);
+            console.log(`[Render] Waiting for frame ${frameIndex + 1}/${totalFrames}`);
+            const prepared = await Promise.race([
+                videoPool.getFrame(frameIndex),
+                new Promise<null>((resolve) => window.setTimeout(() => resolve(null), 20000)),
+            ]);
+            if (!prepared) {
+                console.warn(`[Render] Timed out waiting for frame ${frameIndex + 1}/${totalFrames}; continuing`);
+                continue;
             }
+            console.log(
+                `[Render] Got frame ${frameIndex + 1}/${totalFrames} in ${(performance.now() - waitStart).toFixed(2)}ms (t=${prepared.timeSec.toFixed(3)})`
+            );
             totalWaitMs += performance.now() - waitStart;
+
+            // Create frame-specific config with the worker's videos
+            const frameConfig: FrameRenderConfig = {
+                ...frameRenderConfig,
+                // Keep existing types; actual draw uses DrawArgs.screenFrame/webcamFrame
+                webcamVideo,
+                screenShare,
+            };
 
             // Render frame to canvas
             const renderStart = performance.now();
-            renderFrameContent(frameRenderConfig, frameTime);
+            // Use prepared time and pass bitmaps via DrawArgs (layout drawers already support screenFrame/webcamFrame)
+            const decodedTime = Math.max(trimStart, Math.min(trimEnd, prepared.timeSec));
+            const frameConfigWithFrames = {
+                ...(frameConfig as any),
+                screenFrame: prepared.screen,
+                webcamFrame: prepared.webcam ?? undefined,
+            };
+            renderFrameContent(frameConfigWithFrames, decodedTime);
             totalRenderMs += performance.now() - renderStart;
+
+            // Free bitmaps ASAP
+            videoPool.releaseFrame(frameIndex);
 
             // Create VideoFrame from canvas
             const timestampUs = Math.round(frameIndex * frameDurationSec * 1_000_000);
@@ -273,6 +281,7 @@ export const render = async (
 
             // Implement backpressure: if encoder queue is too full, wait a bit (with timeout)
             if (encoder.encodeQueueSize > 10) {
+                console.log("Waiting for encoder queue to clear...");
                 await new Promise<void>((resolve) => {
                     let attempts = 0;
                     const maxAttempts = 100; // ~1.7 seconds at 60fps

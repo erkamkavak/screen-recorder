@@ -7,7 +7,10 @@ import type { CanvasSize, PointerEventRecord, Share, DrawArgs } from "../stores"
 import type { GeneralLayoutState, ScreenState, WebcamLayoutState, Theme } from "../stores";
 import type { TimelineZoomEvent } from "../stores/timeline";
 import type { Background } from "./types";
+import type { CaptionSegment } from "./types";
 import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "../canvas/layoutDrawers";
+import { drawCaptionsOverlay } from "../canvas/captions";
+import { drawClickRipplesOverlay, drawPointerCursorOverlay } from "../canvas/pointerOverlays";
 import { computeZoomState } from "../timeline/timelinePlayback";
 import { computePointerState } from "../pointer/pointerState";
 
@@ -31,11 +34,13 @@ export interface FrameRenderConfig {
     pointerPressedIconImage: HTMLImageElement | null;
     pointerSize: number;
     zoomEvents: TimelineZoomEvent[];
+    captions?: CaptionSegment[];
     toggles: {
         showScreen: boolean;
         showWebcam: boolean;
         showMouse: boolean;
         showClicks: boolean;
+        showCaptions: boolean;
     };
 }
 
@@ -58,6 +63,8 @@ export const createDrawArgs = (config: FrameRenderConfig): DrawArgs => {
         generalLayoutState: config.generalLayoutState,
         webcamLayoutState: config.webcamLayoutState,
         screenLayoutState: config.screenLayoutState,
+        screenFrame: (config as any).screenFrame,
+        webcamFrame: (config as any).webcamFrame,
     };
 };
 
@@ -92,62 +99,10 @@ export const renderFrameContent = (
     // Calculate zoom state from timeline events
     const { scale, focusX, focusY } = computeZoomState(config.zoomEvents, currentTime);
 
-    const drawClickRipples = (timeSec: number) => {
-        if (!toggles.showClicks || !placement || clickRecords.length === 0) return;
-
-        const timeMs = timeSec * 1000;
-        const rippleDurationMs = 200;
-
-        const baseHeight = 1080;
-        const resolutionScale = config.canvasSize.height / baseHeight;
-        const POINTER_RENDER_SCALE = 2.5;
-        const pointerRenderSize = config.pointerSize * POINTER_RENDER_SCALE * resolutionScale;
-
-        // Find clicks within the ripple window, starting from latest.
-        for (let i = clickRecords.length - 1; i >= 0; i--) {
-            const click = clickRecords[i];
-            if (typeof click.x !== "number" || typeof click.y !== "number") continue;
-
-            const ageMs = timeMs - click.t;
-            if (ageMs < 0) continue;
-            if (ageMs > rippleDurationMs) break;
-
-            const progress = ageMs / rippleDurationMs;
-            const alpha = Math.max(0, 1 - progress);
-
-            const cx = placement.x + click.x * placement.width;
-            const cy = placement.y + click.y * placement.height;
-
-            const radius = pointerRenderSize * (0.2 + progress * 0.3);
-            const lineWidth = Math.max(1, 2 * resolutionScale);
-
-            ctx.save();
-            ctx.globalCompositeOperation = "source-over";
-
-            // Draw Ring (Salmon)
-            ctx.lineWidth = lineWidth;
-            ctx.strokeStyle = `rgba(250, 128, 114, ${alpha})`; // Salmon
-            ctx.beginPath();
-            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-            ctx.stroke();
-
-            // Draw Dot (Teal)
-            ctx.fillStyle = `rgba(13, 148, 136, ${alpha})`; // Teal
-            ctx.beginPath();
-            ctx.arc(cx, cy, pointerRenderSize * 0.08, 0, Math.PI * 2);
-            ctx.fill();
-
-            ctx.restore();
-        }
-    };
-
     // Clear and prepare canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.imageSmoothingQuality = "medium";
+    ctx.imageSmoothingQuality = "high";
     ctx.globalCompositeOperation = "source-over";
-
-    // Draw background
-    background.draw(drawArgs);
 
     // Apply zoom transform
     ctx.save();
@@ -172,41 +127,30 @@ export const renderFrameContent = (
 
     // Draw click ripples (under cursor)
     if (toggles.showScreen) {
-        drawClickRipples(currentTime);
+        if (toggles.showClicks && placement && clickRecords.length) {
+            drawClickRipplesOverlay({
+                ctx,
+                placement,
+                clickRecords,
+                timeSec: currentTime,
+                canvasSize: config.canvasSize,
+                pointerSize: config.pointerSize,
+            });
+        }
     }
 
     // Draw pointer/cursor
-    if (toggles.showMouse && pointerRecords.length && placement && pointerState.visible) {
-        const cursorShape = pointerState.cursorShape || "default";
-        const usePointerIcon = cursorShape === "pointer" || pointerState.isPressed;
-        const icon = usePointerIcon
-            ? config.pointerPressedIconImage ?? config.pointerIconImage
-            : config.pointerIconImage;
-
-        // Scale pointer based on canvas resolution
-        // Base scale is for 1080p (1920x1080), scale up for higher resolutions
-        const baseHeight = 1080;
-        const resolutionScale = config.canvasSize.height / baseHeight;
-        const POINTER_RENDER_SCALE = 2.5;
-        const size = config.pointerSize * POINTER_RENDER_SCALE * resolutionScale;
-        const pointerLeft = placement.x + pointerState.x * placement.width;
-        const pointerTop = placement.y + pointerState.y * placement.height;
-
-        if (icon) {
-            // Align cursor image hotspot with recorded x/y so it matches click position.
-            // These are tuned for the default cursor pack.
-            const hotspot = usePointerIcon
-                ? { x: 0.5, y: 0.12 }
-                : { x: 0.18, y: 0.2 };
-            const drawX = pointerLeft - size * hotspot.x;
-            const drawY = pointerTop - size * hotspot.y;
-            ctx.drawImage(
-                icon,
-                drawX,
-                drawY,
-                size,
-                size
-            );
+    if (toggles.showScreen) {
+        if (toggles.showMouse && pointerRecords.length && placement) {
+            drawPointerCursorOverlay({
+                ctx,
+                placement,
+                canvasSize: config.canvasSize,
+                pointerSize: config.pointerSize,
+                pointerState,
+                iconDefault: config.pointerIconImage,
+                iconPressed: config.pointerPressedIconImage,
+            });
         }
     }
 
@@ -216,6 +160,24 @@ export const renderFrameContent = (
     if (toggles.showWebcam && config.webcamVideo) {
         drawWebcam(drawArgs);
     }
+
+    // Draw captions (not affected by zoom)
+    if (toggles.showScreen) {
+        if (toggles.showCaptions && config.captions?.length) {
+            drawCaptionsOverlay({
+                ctx,
+                canvas,
+                canvasSize: config.canvasSize,
+                timeSec: currentTime,
+                segments: config.captions,
+            });
+        }
+    }
+
+    // Background behind everything
+    ctx.globalCompositeOperation = "destination-over";
+    background.draw(drawArgs);
+    ctx.globalCompositeOperation = "source-over";
 };
 
 /**
