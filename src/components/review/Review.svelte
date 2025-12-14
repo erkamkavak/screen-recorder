@@ -1,7 +1,6 @@
 <script lang="ts">
-  import CompositePlayer from "./CompositePlayer.svelte";
-  import PointerStyleControls from "./PointerStyleControls.svelte";
-  import Timeline from "../Timeline.svelte";
+  import ReviewPlayerPane from "./ReviewPlayerPane.svelte";
+  import ReviewRenderSidebar from "./ReviewRenderSidebar.svelte";
   import type { PointerEventRecord } from "../../lib/stores";
   import type {
     Background,
@@ -14,8 +13,9 @@
     WebcamLayoutState,
   } from "../../lib/stores";
   import type { TimelineSnapshot } from "../../lib/stores/timeline";
-  import { humanDuration } from "../../lib/utils/duration";
   import { onDestroy, onMount } from "svelte";
+  import { transcriptionResult, transcriptionSettings } from "../../lib/stores/transcription";
+  import { computeReviewLayoutSizes } from "../../lib/review/layoutSizing";
 
   export let lastRecording: LastRecording = null;
   export let assets: RecordingAssets | null = null;
@@ -25,7 +25,6 @@
   export let webcamLayoutState: WebcamLayoutState;
   export let theme: Theme;
   export let background: Background;
-  export let recordingFPS: number = 30;
   export let currentSnapshot: TimelineSnapshot;
 
   export let includePointerTrack = true;
@@ -105,28 +104,12 @@
     onFrameRatePresetChange(select.value);
   };
 
-  const clampBetween = (value: number, minValue: number, maxValue: number) =>
-    Math.max(minValue, Math.min(value, maxValue));
-
   const computeLayoutSizes = (rootWidth: number, requestedPreview?: number) => {
-    const safeRootWidth = Math.max(rootWidth, 0);
-    const minTotal = minPreviewWidth + minAsideWidth + resizeGutter;
-
-    if (safeRootWidth <= minTotal) {
-      const available = Math.max(safeRootWidth - resizeGutter, 0);
-      const previewRatio = minPreviewWidth / (minPreviewWidth + minAsideWidth);
-      const preview = available * previewRatio;
-      const aside = available - preview;
-      previewWidthPx = Math.max(preview, 0);
-      asideWidthPx = Math.max(aside, 0);
-      return;
-    }
-
-    const suggestedPreview = requestedPreview ?? Math.max(minPreviewWidth, safeRootWidth * 0.7);
-    const maxPreview = Math.max(safeRootWidth - minAsideWidth - resizeGutter, minPreviewWidth);
-    const preview = clampBetween(suggestedPreview, minPreviewWidth, maxPreview);
-    const maxAsideWidth = Math.max(safeRootWidth - minPreviewWidth - resizeGutter, minAsideWidth);
-    const aside = clampBetween(safeRootWidth - preview - resizeGutter, minAsideWidth, maxAsideWidth);
+    const { previewWidthPx: preview, asideWidthPx: aside } = computeReviewLayoutSizes(
+      rootWidth,
+      requestedPreview,
+      { minPreviewWidth, minAsideWidth, resizeGutter }
+    );
     previewWidthPx = preview;
     asideWidthPx = aside;
   };
@@ -186,6 +169,8 @@
     };
   });
 
+  const audioFilePath = assets?.audio?.filePath ?? null;
+
   onDestroy(() => {
     stopResize();
     rootResizeObserver?.disconnect();
@@ -194,163 +179,75 @@
 
 {#if lastRecording && assets}
   <div class="review-root" bind:this={reviewRootEl}>
-    <section
-      class="review-main"
-      style={`flex: 0 0 ${previewWidthPx}px; width: ${previewWidthPx}px;`}
-    >
-      <article class="playback-card plain">
-        <header class="panel-header">
-          <div>
-            <h2>Review</h2>
-            <p>Use the timeline to scrub. The screen asset plays back directly with a live pointer overlay.</p>
-          </div>
-        </header>
-
-        <div class="player-frame narrow" bind:this={playerFrameEl}>
-          <CompositePlayer
-            assets={assets}
-            canvasSize={canvasSize}
-            generalLayoutState={generalLayoutState}
-            screenLayoutState={screenLayoutState}
-            webcamLayoutState={webcamLayoutState}
-            theme={theme}
-            background={background}
-            snapshot={currentSnapshot}
-            showScreen={true}
-            showWebcam={includeWebcamTrack}
-            showMouse={includePointerTrack}
-            showClicks={includeClickTrack}
-            includeAudio={includeAudioTrack}
-            frameRate={recordingFPS}
-            pointerRecords={pointerRecords}
-            pointerIconUrl={pointerIconImageUrl}
-            pointerIconPressedUrl={pointerIconPressedImageUrl}
-            pointerIndicatorSize={pointerIndicatorSize}
-            bind:duration={videoDuration}
-            bind:currentTime={videoCurrentTime}
-            bind:screenWidth={screenWidth}
-            bind:screenHeight={screenHeight}
-          />
-          <!-- <div class="pointer-indicator" style={pointerStyle} /> -->
-        </div>
-
-        <Timeline
-          duration={timelineDuration}
-          currentTime={videoCurrentTime}
-          clickEvents={sortedClickEvents}
-          onAddZoomForClick={addZoomForClick}
-        />
-      </article>
-    </section>
+    <ReviewPlayerPane
+      assets={assets}
+      canvasSize={canvasSize}
+      generalLayoutState={generalLayoutState}
+      screenLayoutState={screenLayoutState}
+      webcamLayoutState={webcamLayoutState}
+      theme={theme}
+      background={background}
+      snapshot={currentSnapshot}
+      {includeWebcamTrack}
+      {includePointerTrack}
+      {includeClickTrack}
+      {includeAudioTrack}
+      transcript={$transcriptionResult}
+      showCaptions={$transcriptionSettings.showCaptions}
+      {pointerRecords}
+      {pointerIconImageUrl}
+      {pointerIconPressedImageUrl}
+      {pointerIndicatorSize}
+      bind:duration={videoDuration}
+      bind:currentTime={videoCurrentTime}
+      bind:screenWidth
+      bind:screenHeight
+      {timelineDuration}
+      {sortedClickEvents}
+      {addZoomForClick}
+      bind:playerFrameEl
+      {previewWidthPx}
+    />
     <div
       class={`review-resize-handle ${isResizing ? "is-resizing" : ""}`}
       aria-hidden="true"
       on:pointerdown={startResize}
     />
-    <aside class="review-aside" style={`width: ${asideWidthPx}px;`}>
-      <h1>Render options</h1>
-      <p class="aside-text">Control the render, then download it as a video file.</p>
+    <ReviewRenderSidebar
+      {asideWidthPx}
+      {hasWebcam}
+      {hasAudio}
+      {audioFilePath}
+      bind:includePointerTrack
+      bind:includeClickTrack
+      bind:includeWebcamTrack
+      bind:includeAudioTrack
+      bind:showCaptions={$transcriptionSettings.showCaptions}
+      captionsAvailable={!!$transcriptionResult?.segments?.length}
+      {renderFormat}
+      {renderFormatOptions}
+      onRenderFormatSelect={handleRenderFormatSelect}
+      {resolutionPresets}
+      {selectedResolutionPreset}
+      onResolutionPresetSelect={handleResolutionPresetSelect}
+      {frameRatePresets}
+      {selectedFrameRatePreset}
+      onFrameRatePresetSelect={handleFrameRatePresetSelect}
+      {pointerSize}
+      {pointerIconSelection}
+      {pointerIconOptions}
+      {zipPointerImportMessage}
+      {onPointerSizeChange}
+      {onPointerIconSelect}
+      {onZipPointerFileChange}
+      {isRenderingVideo}
+      {renderProgress}
+      onRender={downloadEditedVideo}
+      {onCancelRender}
+      {resetToRecorder}
+      {videoDuration}
+    />
 
-      <div class="toggle-group">
-        <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includePointerTrack} /> <span>Include pointer</span></label>
-        <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includeClickTrack} /> <span>Show click interactions</span></label>
-        <label class="cb" class:disabled={!hasWebcam}>
-          <input type="checkbox" class="cb-input" bind:checked={includeWebcamTrack} disabled={!hasWebcam} />
-          <span>Include webcam</span>
-        </label>
-        <label class="cb" class:disabled={!hasAudio}>
-          <input type="checkbox" class="cb-input" bind:checked={includeAudioTrack} disabled={!hasAudio} />
-          <span>Include audio</span>
-        </label>
-      </div>
-
-      <div class="format-field">
-        <label class="field-label" for="render-format-select">Render format</label>
-        <div class="select-wrapper">
-          <select
-            id="render-format-select"
-            value={renderFormat}
-            on:change={handleRenderFormatSelect}
-          >
-            {#each renderFormatOptions as option}
-              <option value={option.value} disabled={!option.supported}>
-                {option.label}
-                {#if !option.supported}
-                  {" (unsupported)"}
-                {/if}
-              </option>
-            {/each}
-          </select>
-        </div>
-      </div>
-
-      {#if resolutionPresets.length}
-        <div class="format-field">
-          <label class="field-label" for="resolution-preset-select">Resolution</label>
-          <div class="select-wrapper">
-            <select
-              id="resolution-preset-select"
-              value={selectedResolutionPreset}
-              on:change={handleResolutionPresetSelect}
-            >
-              {#each resolutionPresets as preset}
-                <option value={preset.id}>{preset.label}</option>
-              {/each}
-            </select>
-          </div>
-        </div>
-      {/if}
-
-      {#if frameRatePresets.length}
-        <div class="format-field">
-          <label class="field-label" for="framerate-preset-select">Frame rate</label>
-          <div class="select-wrapper">
-            <select
-              id="framerate-preset-select"
-              value={selectedFrameRatePreset}
-              on:change={handleFrameRatePresetSelect}
-            >
-              {#each frameRatePresets as preset}
-                <option value={preset.id}>{preset.label}</option>
-              {/each}
-            </select>
-          </div>
-        </div>
-      {/if}
-
-      <PointerStyleControls
-        pointerSize={pointerSize}
-        pointerIconSelection={pointerIconSelection}
-        pointerIconOptions={pointerIconOptions}
-        zipPointerImportMessage={zipPointerImportMessage}
-        onPointerSizeChange={onPointerSizeChange}
-        onPointerIconSelect={onPointerIconSelect}
-        onZipPointerFileChange={onZipPointerFileChange}
-      />
-
-      <div class="button-stack">
-        <button class="primary" on:click={downloadEditedVideo} disabled={isRenderingVideo}>
-          {#if isRenderingVideo}
-            Rendering… {renderProgress}%
-          {:else}
-            Render and download
-          {/if}
-        </button>
-        {#if isRenderingVideo}
-          <button class="danger" on:click={onCancelRender}>
-            Cancel render
-          </button>
-        {/if}
-        <button class="secondary" on:click={resetToRecorder}>Back to recorder</button>
-      </div>
-
-      <dl class="stats">
-        <div>
-          <dt>Duration</dt>
-          <dd>{humanDuration(Math.round(videoDuration))}</dd>
-        </div>
-      </dl>
-    </aside>
   </div>
 {:else}
   <div class="fallback">
@@ -370,89 +267,6 @@
     align-items: stretch;
     max-width: 100%;
     overflow-x: hidden;
-  }
-
-  .review-main {
-    flex: 0 0 auto;
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
-    max-width: 100%;
-    min-width: 0;
-    padding-right: 0.5rem;
-  }
-
-  .playback-card {
-    background: transparent;
-    padding: 0;
-    box-shadow: none;
-    border: none;
-  }
-  .playback-card.plain header { padding: 0 0 0.5rem 0; }
-
-  .panel-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 1rem;
-  }
-
-  .panel-header h2 {
-    margin: 0;
-    font-size: 1.2rem;
-    font-weight: 600;
-  }
-
-  .panel-header p {
-    margin: 0;
-    font-size: 0.9rem;
-    color: #475569;
-  }
-
-  .player-frame {
-    margin-top: 0.5rem;
-    position: relative;
-    border-radius: 12px;
-    border: none;
-    background: transparent;
-    overflow: visible;
-    min-height: 0;
-  }
-  .player-frame.narrow {
-    width: 100%;
-    max-width: 100%;
-    margin: 0;
-  }
-
-  .pointer-indicator {
-    position: absolute;
-    width: var(--pointer-size, 14px);
-    height: var(--pointer-size, 14px);
-    border-radius: var(--pointer-border-radius, 0px);
-    background-color: transparent;
-    background-image: var(--pointer-icon, none);
-    background-size: contain;
-    background-position: center;
-    background-repeat: no-repeat;
-    pointer-events: none;
-    transition: opacity 0.2s ease;
-    transform: translate(0%, -100%);
-  }
-
-  .review-aside {
-    flex: 0 0 auto;
-    min-width: 20rem;
-    border-radius: 18px;
-    border: 1px solid #e5e7eb;
-    padding: 1.5rem;
-    background: #fff;
-    box-shadow: 0 18px 35px rgba(15, 23, 42, 0.08);
-    display: flex;
-    flex-direction: column;
-    gap: 1.25rem;
-    position: sticky;
-    top: 1.5rem;
-    align-self: flex-start;
   }
 
   .review-resize-handle {
@@ -489,155 +303,6 @@
     bottom: 0;
   }
 
-  .toggle-group { display: grid; gap: 0.5rem; }
-  .toggle-group .cb {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    font-size: 0.95rem;
-    color: #334155;
-    cursor: pointer;
-  }
-  .toggle-group .cb.disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  .cb-input {
-    appearance: none;
-    width: 18px;
-    height: 18px;
-    border: 2px solid #94a3b8;
-    border-radius: 6px;
-    display: inline-block;
-    position: relative;
-    background: #fff;
-  }
-  .cb-input:checked {
-    background: #111827;
-    border-color: #111827;
-  }
-  .cb-input:checked::after {
-    content: "";
-    position: absolute;
-    left: 4px;
-    top: 0px;
-    width: 6px;
-    height: 12px;
-    border: solid #fff;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
-  }
-  .cb-input:disabled {
-    border-color: #cbd5e1;
-    background: #f1f5f9;
-  }
-
-  .format-field {
-    margin-top: 0.75rem;
-  }
-
-  .field-label {
-    display: block;
-    font-size: 0.85rem;
-    color: #0f172a;
-    font-weight: 600;
-    margin-bottom: 0.25rem;
-  }
-
-  .select-wrapper select {
-    width: 100%;
-    padding: 0.4rem 0.5rem;
-    border-radius: 0.6rem;
-    border: 1px solid #cbd5f5;
-    font-size: 0.95rem;
-    background: #fff;
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-  }
-
-  .select-wrapper {
-    position: relative;
-  }
-
-  .select-wrapper::after {
-    content: "";
-    position: absolute;
-    pointer-events: none;
-    right: 0.6rem;
-    top: 50%;
-    width: 0.45rem;
-    height: 0.45rem;
-    border-right: 2px solid #94a3b8;
-    border-bottom: 2px solid #94a3b8;
-    transform: translateY(-70%) rotate(45deg);
-  }
-
-  .review-aside h1 {
-    margin: 0;
-    font-size: 1.35rem;
-  }
-
-  .aside-text {
-    margin: 0;
-    color: #475569;
-    line-height: 1.4;
-  }
-
-  .button-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-  }
-
-  .primary,
-  .danger,
-  .secondary {
-    border-radius: 10px;
-    font-weight: 600;
-    padding: 0.7rem 1rem;
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .primary { background: #111827; color: #fff; }
-  .primary:disabled { opacity: 0.6; cursor: not-allowed; }
-  .primary:hover:not(:disabled) { background: #1f2937; }
-  
-  .danger { background: #ef4444; color: #fff; }
-  .danger:hover { background: #dc2626; }
-
-  .secondary {
-    background: #ffffff;
-    color: #334155;
-    border: 1px solid #cbd5e1;
-  }
-  .secondary:hover {
-    background: #f1f5f9;
-    color: #1e293b;
-    border-color: #94a3b8;
-  }
-
-  .stats {
-    display: grid;
-    gap: 0.75rem;
-    margin: 0;
-  }
-
-  .stats dt {
-    font-size: 0.7rem;
-    color: #64748b;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .stats dd {
-    margin: 0;
-    font-size: 1rem;
-    font-weight: 600;
-  }
-
   .fallback {
     height: 100%;
     display: flex;
@@ -654,25 +319,141 @@
       gap: 2rem;
     }
 
-    .review-main {
-      flex: 1 1 auto !important;
-      width: auto !important;
-      padding-right: 0;
-    }
-
-    .review-aside {
-      position: static;
-      width: auto !important;
-      flex: 1 1 auto;
-      margin-right: 0;
-    }
-
     .review-resize-handle {
       display: none;
     }
   }
 
-  @media (max-width: 640px) {
-    .playback-card { padding: 1rem; }
+  :global(.toggle-group) { display: grid; gap: 0.5rem; }
+  :global(.toggle-group .cb) {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.95rem;
+    color: #334155;
+    cursor: pointer;
+  }
+  :global(.toggle-group .cb.disabled) {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  :global(.cb-input) {
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border: 2px solid #94a3b8;
+    border-radius: 6px;
+    display: inline-block;
+    position: relative;
+    background: #fff;
+  }
+  :global(.cb-input:checked) {
+    background: #111827;
+    border-color: #111827;
+  }
+  :global(.cb-input:checked::after) {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 0px;
+    width: 6px;
+    height: 12px;
+    border: solid #fff;
+    border-width: 0 2px 2px 0;
+    transform: rotate(45deg);
+  }
+  :global(.cb-input:disabled) {
+    border-color: #cbd5e1;
+    background: #f1f5f9;
+  }
+
+  :global(.format-field) { margin-top: 0.75rem; }
+  :global(.field-label) {
+    display: block;
+    font-size: 0.85rem;
+    color: #0f172a;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+  }
+  :global(.select-wrapper) { position: relative; }
+  :global(.select-wrapper select) {
+    width: 100%;
+    padding: 0.4rem 0.5rem;
+    border-radius: 0.6rem;
+    border: 1px solid #cbd5f5;
+    font-size: 0.95rem;
+    background: #fff;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+  }
+  :global(.select-wrapper::after) {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+    right: 0.6rem;
+    top: 50%;
+    width: 0.45rem;
+    height: 0.45rem;
+    border-right: 2px solid #94a3b8;
+    border-bottom: 2px solid #94a3b8;
+    transform: translateY(-70%) rotate(45deg);
+  }
+
+  :global(.aside-text) {
+    margin: 0;
+    color: #475569;
+    line-height: 1.4;
+  }
+  :global(.button-stack) {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  :global(.primary),
+  :global(.danger),
+  :global(.secondary) {
+    border-radius: 10px;
+    font-weight: 600;
+    padding: 0.7rem 1rem;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+
+  :global(.primary) { background: #111827; color: #fff; }
+  :global(.primary:disabled) { opacity: 0.6; cursor: not-allowed; }
+  :global(.primary:hover:not(:disabled)) { background: #1f2937; }
+
+  :global(.danger) { background: #ef4444; color: #fff; }
+  :global(.danger:hover) { background: #dc2626; }
+
+  :global(.secondary) {
+    background: #ffffff;
+    color: #334155;
+    border: 1px solid #cbd5e1;
+  }
+  :global(.secondary:hover) {
+    background: #f1f5f9;
+    color: #1e293b;
+    border-color: #94a3b8;
+  }
+
+  :global(.stats) {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+  }
+  :global(.stats dt) {
+    font-size: 0.7rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  :global(.stats dd) {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 600;
   }
 </style>

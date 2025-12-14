@@ -15,7 +15,15 @@ export interface RenderToggleConfig {
     showWebcam: boolean;
     showMouse: boolean;
     showClicks: boolean;
+    showCaptions: boolean;
     includeAudio: boolean;
+}
+
+export interface CaptionSegment {
+    startMs: number;
+    endMs: number;
+    text: string;
+    speaker?: string | null;
 }
 
 /**
@@ -50,6 +58,9 @@ export interface RenderOptions {
     pointerSize?: number;
     /** Token for cancellation */
     cancelToken?: { cancelled: boolean };
+
+    /** Captions to render on top of the canvas (not affected by zoom) */
+    captions?: CaptionSegment[];
 }
 
 /**

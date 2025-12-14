@@ -17,8 +17,9 @@
   import { timelineStore } from "../lib/stores/timeline";
   import { onDestroy, onMount } from "svelte";
   import { backendAPI } from "../lib/backend/backendAPI";
+  import { transcriptionResult, transcriptionSettings } from "../lib/stores/transcription";
   import {
-    render,
+    render as renderVideo,
     isWebCodecsAvailable,
     type RenderOptions,
     type RenderResult,
@@ -707,7 +708,7 @@
       let result: RenderResult;
       
       try {
-        result = await render(
+        result = await renderVideo(
           $lastRecording.assets,
           $lastRecording.duration,
           timelineStore.snapshot(),
@@ -724,8 +725,10 @@
               showWebcam: includeWebcamTrack,
               showMouse: includePointerTrack,
               showClicks: includeClickTrack,
+              showCaptions: $transcriptionSettings.showCaptions,
               includeAudio: includeAudioTrack,
             },
+            captions: $transcriptionResult?.segments ?? undefined,
             pointerRecords,
             pointerIconUrl: pointerIconImageUrl,
             pointerIconPressedUrl: pointerIconPressedImageUrl,
@@ -789,7 +792,6 @@
   theme={$activeTheme}
   background={$activeBackground}
   timelineDuration={timelineDuration}
-  recordingFPS={$recordingFPS}
   currentSnapshot={currentSnapshot}
   bind:includePointerTrack={includePointerTrack}
   bind:includeClickTrack={includeClickTrack}

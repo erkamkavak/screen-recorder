@@ -5,6 +5,9 @@
   import { drawScreenShare, drawWebcam } from "../../lib/canvas/layoutDrawers";
   import { computePointerState, type ComputedPointerState } from "../../lib/pointer/pointerState";
   import { calculateScreenPlacement } from "../../lib/canvas/layoutDrawers";
+  import { drawCaptionsOverlay } from "../../lib/canvas/captions";
+  import { drawClickRipplesOverlay, drawPointerCursorOverlay } from "../../lib/canvas/pointerOverlays";
+  import { createAudioElement, createVideoElement, loadImage, waitForMetadata } from "../../lib/canvas/mediaElements";
   import type {
     Background,
     CanvasSize,
@@ -32,7 +35,9 @@
   export let showMouse: boolean = true;
   export let showClicks: boolean = true;
   export let includeAudio: boolean = true;
-  export let frameRate: number = 30;
+
+  export let transcript: { segments: { startMs: number; endMs: number; text: string }[] } | null = null;
+  export let showCaptions: boolean = true;
 
   export let pointerRecords: any[] = [];
   export let pointerIconUrl: string | null = null;
@@ -97,115 +102,20 @@
     pointerPressedIconImage = null;
   }  
 
-  const waitForMetadata = (media: HTMLMediaElement, timeoutMs = 5000) =>
-    new Promise<void>((resolve) => {
-      if (media.readyState >= 1) {
-        console.log("[waitForMetadata] already ready", {
-          src: media.currentSrc,
-          readyState: media.readyState,
-          duration: media.duration,
-        });
-        resolve();
-        return;
-      }
-      let resolved = false;
-      const onLoaded = () => {
-        if (resolved) return;
-        resolved = true;
-        cleanup();
-        console.log("[waitForMetadata] loadedmetadata", {
-          src: media.currentSrc,
-          readyState: media.readyState,
-          duration: media.duration,
-        });
-        resolve();
-      };
-      const onCanPlay = () => {
-        if (resolved) return;
-        resolved = true;
-        cleanup();
-        console.log("[waitForMetadata] canplay", {
-          src: media.currentSrc,
-          readyState: media.readyState,
-          duration: media.duration,
-        });
-        resolve();
-      };
-      const onError = () => {
-        const err = media.error;
-        console.warn("[waitForMetadata] media error (will retry with timeout)", {
-          src: media.currentSrc,
-          readyState: media.readyState,
-          networkState: media.networkState,
-          errorCode: err ? err.code : null,
-          errorMessage: err && (err as any).message,
-        });
-        // Don't reject - let timeout handle it
-      };
-      const cleanup = () => {
-        media.removeEventListener("loadedmetadata", onLoaded);
-        media.removeEventListener("canplay", onCanPlay);
-        media.removeEventListener("error", onError);
-      };
-      media.addEventListener("loadedmetadata", onLoaded);
-      media.addEventListener("canplay", onCanPlay);
-      media.addEventListener("error", onError);
-      
-      // Timeout fallback - proceed anyway after timeout
-      setTimeout(() => {
-        if (resolved) return;
-        resolved = true;
-        cleanup();
-        console.warn("[waitForMetadata] timeout - proceeding anyway", {
-          src: media.currentSrc,
-          readyState: media.readyState,
-        });
-        resolve();
-      }, timeoutMs);
-    });
-
-  const createVideo = (src: string) => {
-    const v = document.createElement("video");
-    v.preload = "auto";
-    v.crossOrigin = "anonymous";
-    v.playsInline = true;
-    v.muted = true;
-    v.src = src;
-    v.load();
-    return v;
-  };
-
-  const loadImage = (src: string) => {
-    return new Promise<HTMLImageElement>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve(img);
-      img.onerror = reject;
-      img.src = src;
-    });
-  };
-
-  const createAudio = (src: string) => {
-    const a = document.createElement("audio");
-    a.src = src;
-    a.crossOrigin = "anonymous";
-    a.muted = false;
-    return a;
-  };
-
   const loadAssets = async () => {
     const screenAsset = assets.screen;
     if (!screenAsset) return;
     screenUrl = await safeLoad(screenAsset);
     if (!screenUrl) return;
-    screenVideo = createVideo(screenUrl);
+    screenVideo = createVideoElement(screenUrl);
     await waitForMetadata(screenVideo);
 
     webcamUrl = await safeLoad(assets.webcam ?? null);
-    webcamVideo = webcamUrl ? createVideo(webcamUrl) : null;
+    webcamVideo = webcamUrl ? createVideoElement(webcamUrl) : null;
     if (webcamVideo) await waitForMetadata(webcamVideo);
 
     audioUrl = includeAudio ? await safeLoad(assets.audio ?? null) : null;
-    audioEl = audioUrl ? createAudio(audioUrl) : null;
+    audioEl = audioUrl ? createAudioElement(audioUrl) : null;
 
     // Load pointer icons
     if (pointerIconUrl) {
@@ -287,122 +197,15 @@
     ctx.translate(-pivotX, -pivotY);
   };
 
-  const drawClickRipples = (timeSec: number) => {
-    if (!ctx || !showClicks || !drawArgs || pointerRecords.length === 0) return;
 
-    const placement = calculateScreenPlacement(
+  const getPlacement = () => {
+    if (!drawArgs) return null;
+    return calculateScreenPlacement(
       canvasSize,
       drawArgs.activeShare,
       screenLayoutState,
       generalLayoutState
     );
-    if (!placement) return;
-
-    const clickRecords = pointerRecords.filter((event) => event.kind === "click");
-    if (!clickRecords.length) return;
-
-    const timeMs = timeSec * 1000;
-    const rippleDurationMs = 200;
-
-    const baseHeight = 1080;
-    const resolutionScale = canvasSize.height / baseHeight;
-    const POINTER_RENDER_SCALE = 2.5;
-    const pointerRenderSize = pointerIndicatorSize * POINTER_RENDER_SCALE * resolutionScale;
-
-    for (let i = clickRecords.length - 1; i >= 0; i--) {
-      const click = clickRecords[i];
-      if (typeof click.x !== "number" || typeof click.y !== "number") continue;
-
-      const ageMs = timeMs - click.t;
-      if (ageMs < 0) continue;
-      if (ageMs > rippleDurationMs) break;
-
-      const progress = ageMs / rippleDurationMs;
-      const alpha = Math.max(0, 1 - progress);
-
-      const cx = placement.x + click.x * placement.width;
-      const cy = placement.y + click.y * placement.height;
-
-      const radius = pointerRenderSize * (0.2 + progress * 0.3);
-      const lineWidth = Math.max(1, 2 * resolutionScale);
-
-      ctx.save();
-      ctx.globalCompositeOperation = "source-over";
-
-      // Draw Ring (Salmon)
-      ctx.lineWidth = lineWidth;
-      ctx.strokeStyle = `rgba(250, 128, 114, ${alpha})`; // Salmon
-      ctx.beginPath();
-      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-      ctx.stroke();
-
-      // Draw Dot (Teal)
-      ctx.fillStyle = `rgba(13, 148, 136, ${alpha})`; // Teal
-      ctx.beginPath();
-      ctx.arc(cx, cy, pointerRenderSize * 0.08, 0, Math.PI * 2);
-      ctx.fill();
-
-      ctx.restore();
-    }
-  };
-
-  const drawMouseCursor = (pointerState: ComputedPointerState) => {
-    if (!showMouse || pointerRecords.length === 0 || !pointerState.visible) return;
-    
-    const placement = calculateScreenPlacement(
-      canvasSize,
-      drawArgs.activeShare,
-      screenLayoutState,
-      generalLayoutState
-    );
-    
-    if (!placement) return;
-    
-    // Calculate pointer position with zoom
-    const pointerX = placement.x + pointerState.x * placement.width;
-    const pointerY = placement.y + pointerState.y * placement.height;
-    
-    // Select appropriate icon
-    const cursorShape = pointerState.cursorShape || "default";
-    const usePointerIcon = cursorShape === "pointer" || pointerState.isPressed;
-    const icon = usePointerIcon
-      ? pointerPressedIconImage
-      : pointerIconImage;
-    
-    if (icon) {
-      const baseHeight = 1080;
-      const resolutionScale = canvasSize.height / baseHeight;
-      const POINTER_RENDER_SCALE = 2.5;
-      const size = pointerIndicatorSize * POINTER_RENDER_SCALE * resolutionScale;
-
-      // Align cursor image hotspot with recorded x/y so it matches click position.
-      // These are tuned for the default cursor pack.
-      const hotspot = usePointerIcon
-        ? { x: 0.5, y: 0.12 }
-        : { x: 0.18, y: 0.2 };
-      const drawX = pointerX - size * hotspot.x;
-      const drawY = pointerY - size * hotspot.y;
-
-      ctx.drawImage(icon, drawX, drawY, size, size);
-    } else {
-      // Fallback to drawn cursor (also scaled)
-      const baseHeight = 1080;
-      const resolutionScale = canvasSize.height / baseHeight;
-      const size = pointerIndicatorSize * resolutionScale;
-      
-      ctx.fillStyle = cursorShape === "pointer" ? "#000000" : "#ffffff";
-      ctx.strokeStyle = "#000000";
-      ctx.lineWidth = resolutionScale;
-      
-      // Draw simple cursor shape with transform: translate(0%, -100%)
-      ctx.beginPath();
-      ctx.moveTo(pointerX, pointerY - size);
-      ctx.lineTo(pointerX + size * 0.8, pointerY - size);
-      ctx.lineTo(pointerX, pointerY);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-    }
   };
 
   const drawFrame = () => {
@@ -420,14 +223,48 @@
     applyZoom(scale, zoomFocusX, zoomFocusY);
     if (showScreen) {
       drawScreenShare(drawArgs);
-      drawClickRipples(screenVideo.currentTime);
-      drawMouseCursor(pointerState);
+      const placement = getPlacement();
+      if (ctx && placement && showClicks) {
+        const clickRecords = pointerRecords.filter((event) => event.kind === "click");
+        drawClickRipplesOverlay({
+          ctx,
+          placement,
+          clickRecords,
+          timeSec: screenVideo.currentTime,
+          canvasSize,
+          pointerSize: pointerIndicatorSize,
+        });
+      }
+      if (ctx && placement && showMouse) {
+        drawPointerCursorOverlay({
+          ctx,
+          placement,
+          canvasSize,
+          pointerSize: pointerIndicatorSize,
+          pointerState,
+          iconDefault: pointerIconImage,
+          iconPressed: pointerPressedIconImage,
+        });
+      }
     }
     ctx.restore();
 
     // Draw webcam without zoom
     if (showWebcam && webcamVideo) {
       drawWebcam(drawArgs);
+    }
+
+    // Draw captions outside zoom
+    if (showScreen) {
+      if (ctx && showCaptions && transcript?.segments?.length) {
+        drawCaptionsOverlay({
+          ctx,
+          canvas: canvasEl,
+          canvasSize,
+          timeSec: screenVideo.currentTime,
+          segments: transcript.segments,
+        });
+      }
     }
 
     // Background behind everything
@@ -475,7 +312,7 @@
       if (!audioEl) {
         const url = await safeLoad(assets.audio ?? null);
         audioUrl = url;
-        audioEl = url ? createAudio(url) : null;
+        audioEl = url ? createAudioElement(url) : null;
         if (audioEl) audioEl.currentTime = screenVideo?.currentTime ?? 0;
       }
       if (playing) {
