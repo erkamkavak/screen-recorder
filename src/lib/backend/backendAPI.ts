@@ -387,6 +387,66 @@ export const getBackendInfo = () => {
   };
 };
 
+// Notes Overlay APIs
+export interface NotesShortcutConfig {
+  ctrl: boolean;
+  alt: boolean;
+  shift: boolean;
+  key: string;
+}
+
+export interface NotesOverlayData {
+  visible?: boolean;
+  text?: string;
+  currentIndex?: number;
+  totalCount?: number;
+  notes?: Array<{ id: string; text: string }>;
+  recording?: boolean;
+  autoHide?: boolean;
+  autoHideDelay?: number;
+  shortcuts?: {
+    next: NotesShortcutConfig;
+    prev: NotesShortcutConfig;
+    toggle: NotesShortcutConfig;
+  };
+}
+
+export const showNotesOverlay = (): void => {
+  if (isElectron) {
+    window.electronAPI.showNotesOverlay?.();
+  }
+};
+
+export const hideNotesOverlay = (): void => {
+  if (isElectron) {
+    window.electronAPI.hideNotesOverlay?.();
+  }
+};
+
+export const updateNotesOverlay = (data: NotesOverlayData): void => {
+  if (isElectron) {
+    window.electronAPI.updateNotesOverlay?.(data);
+  }
+};
+
+export const destroyNotesOverlay = (): void => {
+  if (isElectron) {
+    window.electronAPI.destroyNotesOverlay?.();
+  }
+};
+
+export const startNotesShortcuts = (): void => {
+  if (isElectron) {
+    window.electronAPI.startNotesShortcuts?.();
+  }
+};
+
+export const stopNotesShortcuts = (): void => {
+  if (isElectron) {
+    window.electronAPI.stopNotesShortcuts?.();
+  }
+};
+
 // Export a single object for easier consumption
 export const backendAPI = {
   // Desktop capture
@@ -431,6 +491,14 @@ export const backendAPI = {
   patchRenderFile,
   closeRenderStream,
   cancelRenderStream,
+
+  // Notes overlay
+  showNotesOverlay,
+  hideNotesOverlay,
+  updateNotesOverlay,
+  destroyNotesOverlay,
+  startNotesShortcuts,
+  stopNotesShortcuts,
 
   // Utilities
   getBackendInfo,

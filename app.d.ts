@@ -125,6 +125,37 @@ declare global {
     getTranscriptionJob?: (jobId: string) => Promise<TranscriptionJobSnapshot | null>;
     getTranscriptionResult?: (jobId: string) => Promise<TranscriptionResult | null>;
     cancelTranscription?: (jobId: string) => Promise<boolean>;
+
+    // Notes overlay
+    showNotesOverlay?: () => void;
+    hideNotesOverlay?: () => void;
+    updateNotesOverlay?: (data: NotesOverlayData) => void;
+    destroyNotesOverlay?: () => void;
+    startNotesShortcuts?: () => void;
+    stopNotesShortcuts?: () => void;
+  }
+
+  interface NotesOverlayData {
+    visible?: boolean;
+    text?: string;
+    currentIndex?: number;
+    totalCount?: number;
+    notes?: Array<{ id: string; text: string }>;
+    recording?: boolean;
+    autoHide?: boolean;
+    autoHideDelay?: number;
+    shortcuts?: {
+      next: NotesShortcutConfig;
+      prev: NotesShortcutConfig;
+      toggle: NotesShortcutConfig;
+    };
+  }
+
+  interface NotesShortcutConfig {
+    ctrl: boolean;
+    alt: boolean;
+    shift: boolean;
+    key: string;
   }
 
   interface Window {

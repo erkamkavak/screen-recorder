@@ -64,4 +64,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getTranscriptionJob: (jobId) => ipcRenderer.invoke("native-transcription:get-job", jobId),
   getTranscriptionResult: (jobId) => ipcRenderer.invoke("native-transcription:get-result", jobId),
   cancelTranscription: (jobId) => ipcRenderer.invoke("native-transcription:cancel", jobId),
+
+  // Notes overlay APIs
+  showNotesOverlay: () => ipcRenderer.send("notes:show-overlay"),
+  hideNotesOverlay: () => ipcRenderer.send("notes:hide-overlay"),
+  updateNotesOverlay: (data) => ipcRenderer.send("notes:update", data),
+  destroyNotesOverlay: () => ipcRenderer.send("notes:destroy-overlay"),
+  startNotesShortcuts: () => ipcRenderer.send("notes:start-shortcuts"),
+  stopNotesShortcuts: () => ipcRenderer.send("notes:stop-shortcuts"),
 });

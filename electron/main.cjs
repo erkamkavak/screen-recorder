@@ -14,6 +14,7 @@ const path = require("path");
 const { Blob } = require("buffer");
 const fixWebmDuration = require("fix-webm-duration");
 const { uIOhook } = require("uiohook-napi");
+const notesHandler = require("./notes/notes-overlay-handler.cjs");
 
 // Native Rust addon for screen recording (xcap-based)
 let nativeAddon = null;
@@ -115,6 +116,9 @@ const initializeInputListeners = () => {
 
   uIOhook.on("keydown", (event) => {
     emitInputEvent({ kind: "keydown", ...mapKeyEvent(event) });
+    
+    // Handle notes shortcuts when recording
+    notesHandler.handleNotesKeyEvent(event);
   });
 
   uIOhook.on("keyup", (event) => {
@@ -372,6 +376,9 @@ app.whenReady().then(() => {
   ipcMain.on("input-capture:stop", () => {
     stopInputCapture();
   });
+
+  // Register notes overlay IPC handlers
+  notesHandler.registerNotesIpcHandlers();
 
   ipcMain.handle("desktop-capture:list-sources", async (_event, options = {}) => {
     const sources = await desktopCapturer.getSources({
