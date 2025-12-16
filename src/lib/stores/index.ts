@@ -91,7 +91,7 @@ export type AppView = "recorder" | "review";
 export const appView = writable<AppView>("recorder");
 
 // Sidebar tabs
-export type SidebarTab = "layout" | "webcam" | "mic";
+export type SidebarTab = "layout" | "webcam" | "mic" | "notes";
 export const activeSidebarTab = writable<SidebarTab>("layout");
 
 

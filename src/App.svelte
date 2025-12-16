@@ -4,6 +4,7 @@
   import ActionBar from "./components/ActionBar.svelte";
   import ReviewView from "./components/ReviewView.svelte";
   import RecorderSidebar from "./components/RecorderSidebar.svelte";
+  import NotesOverlay from "./components/features/notes/NotesOverlay.svelte";
   import { createRecordingController, type RecordingController } from "./lib/recording/recordingController";
   import * as stores from "./lib/stores";
   import { backendAPI } from "./lib/backend/backendAPI";
@@ -60,4 +61,6 @@
       <ReviewView />
     </div>
   {/if}
+
+  <NotesOverlay />
 </div>
