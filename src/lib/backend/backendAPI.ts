@@ -65,7 +65,11 @@ export const listTranscriptionProviders = async (): Promise<string[]> => {
 
 export const submitTranscription = async (request: any): Promise<TranscriptionJobInfo> => {
   if (isElectron) {
-    return await window.electronAPI.submitTranscription?.(request);
+    const result = await window.electronAPI.submitTranscription?.(request);
+    if (!result) {
+      throw new Error("Transcription API not available");
+    }
+    return result;
   }
   throw new Error("Transcription not available outside Electron");
 };
