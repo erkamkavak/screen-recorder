@@ -181,7 +181,7 @@ const registerProjectsIpcHandlers = ({ ipcMain, dialog, getMainWindow, getProjec
 
     try {
       await fs.promises.rm(projectDir, { recursive: true, force: true });
-      return { success: true };
+      return true;
     } catch (error) {
       console.error("Failed to delete project:", error);
       throw error;
