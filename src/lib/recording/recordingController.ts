@@ -18,6 +18,7 @@ export const createRecordingController = (
       appView,
       inputEvents,
       lastRecording,
+      currentProject,
       recordingFPS,
       recordingStartTime,
       displayStream,
@@ -115,13 +116,16 @@ export const createRecordingController = (
       }
     });
 
+    const $currentProject = get(currentProject);
+    const isContinuation = $currentProject !== null && $currentProject.segments.length > 0;
+
     void finalizeRecordingAssets({
       durationMs,
       recorders: recordersToFinalize,
       fileExtension: recordingFileExtension,
       patchBlob,
       backendAPI,
-      previousRecording: get(lastRecording),
+      previousRecording: isContinuation ? null : get(lastRecording),
       inputEvents: get(inputEvents),
       nativeRecordingFilePath,
       onNativeRecordingConsumed: () => {
@@ -129,6 +133,8 @@ export const createRecordingController = (
       },
       setLastRecording: (value) => lastRecording.set(value),
       setAppView: (view) => appView.set(view),
+      existingProject: $currentProject,
+      clearCurrentProject: () => currentProject.set(null),
     });
   };
 

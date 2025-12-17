@@ -4,7 +4,7 @@
 
 import type { CanvasSize, DrawFn, Background } from "../stores";
 import type { GeneralLayoutState, ScreenState, WebcamLayoutState, Theme, Share } from "../stores";
-import type { PointerEventRecord, RecordingAsset, RecordingAssets } from "../stores";
+import type { PointerEventRecord, RecordingAsset, RecordingAssets, RecordingSegment } from "../stores";
 import type { TimelineSnapshot, TimelineZoomEvent } from "../stores/timeline";
 
 /**
@@ -115,6 +115,7 @@ export type {
     PointerEventRecord,
     RecordingAsset,
     RecordingAssets,
+    RecordingSegment,
     Share,
     Background,
     TimelineSnapshot,

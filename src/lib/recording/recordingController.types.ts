@@ -5,6 +5,7 @@ import type {
   PointerEventRecord,
   RecordingAssetType,
   RecordingAssets,
+  RecordingProject,
   Share,
   WebcamState,
 } from "../stores";
@@ -32,6 +33,7 @@ export type RecordingStores = {
   appView: Writable<"recorder" | "review">;
   inputEvents: Writable<InputEventRecord[]>;
   lastRecording: Writable<LastRecording>;
+  currentProject: Writable<RecordingProject | null>;
   recordingFPS: Readable<number>;
   recordingStartTime: Writable<number | null>;
   displayStream: Readable<MediaStream | null>;
@@ -42,6 +44,7 @@ export type RecordingStores = {
 
 export type RecordingBackend = {
   saveRecordingAsset: (fileName: string, buffer: ArrayBuffer) => Promise<string>;
+  readRecordingAsset: (filePath: string) => Promise<ArrayBuffer>;
   cleanupRecordingAssets: (paths: string[]) => Promise<unknown>;
   startNativeRecording: (options: {
     targetId: string;

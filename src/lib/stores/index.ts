@@ -78,14 +78,40 @@ export type RecordingAsset = {
 
 export type RecordingAssets = Partial<Record<RecordingAssetType, RecordingAsset>>;
 
+export type RecordingSegment = {
+  id: string;
+  assets: RecordingAssets;
+  events: InputEventRecord[];
+  startOffset: number; // ms from project start
+  duration: number; // original duration in ms
+  trimStart: number; // ms trimmed from beginning
+  trimEnd: number; // ms trimmed from end
+};
+
+export type RecordingProject = {
+  id?: string;
+  name?: string;
+  segments: RecordingSegment[];
+  totalDuration: number; // computed from segments
+  fileName: string;
+  previewPath?: string;
+  reviewState?: any;
+};
+
 export type LastRecording = {
   assets: RecordingAssets;
   events: InputEventRecord[];
   fileName: string;
   duration: number;
   previewPath?: string;
+  // Segment-based fields
+  segments?: RecordingSegment[];
+  projectId?: string;
+  reviewState?: any;
 } | null;
 export const lastRecording = writable<LastRecording>(null);
+
+export const currentProject = writable<RecordingProject | null>(null);
 
 export type AppView = "recorder" | "review";
 export const appView = writable<AppView>("recorder");

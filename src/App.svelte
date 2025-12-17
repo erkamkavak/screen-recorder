@@ -4,6 +4,7 @@
   import ActionBar from "./components/ActionBar.svelte";
   import ReviewView from "./components/ReviewView.svelte";
   import RecorderSidebar from "./components/RecorderSidebar.svelte";
+  import ProjectsList from "./components/features/projects/ProjectsList.svelte";
   import NotesOverlay from "./components/features/notes/NotesOverlay.svelte";
   import { createRecordingController, type RecordingController } from "./lib/recording/recordingController";
   import * as stores from "./lib/stores";
@@ -16,6 +17,7 @@
       appView: stores.appView,
       inputEvents: stores.inputEvents,
       lastRecording: stores.lastRecording,
+      currentProject: stores.currentProject,
       recordingFPS: stores.recordingFPS,
       recordingStartTime: stores.recordingStartTime,
       displayStream: stores.displayStream,
@@ -36,6 +38,19 @@
     }
   };
 
+  let showRecorderProjects = false;
+  const toggleRecorderProjects = () => {
+    showRecorderProjects = !showRecorderProjects;
+  }; 
+  $: $appView; // reactive dependency to trigger when appView changes
+  $: if ($appView !== 'recorder') {
+    showRecorderProjects = false;
+  }
+
+  const closeRecorderProjects = () => {
+    showRecorderProjects = false;
+  };
+
   // Cleanup on component destroy
 </script>
 
@@ -47,6 +62,34 @@
   {#if $appView === "recorder"}
     <div class="grid h-full w-full grid-rows-[minmax(0,1fr)_auto] gap-5 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_26rem] lg:grid-rows-1 lg:gap-8 lg:px-8">
       <div class="flex min-w-0 flex-col gap-4">
+        <div class="flex items-center justify-between px-1">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Live Preview</h2>
+          </div>
+          <div class="relative">
+            <button
+              type="button"
+              class={`inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:bg-white ${showRecorderProjects ? "ring-2 ring-sky-300" : ""}`}
+              on:click={toggleRecorderProjects}
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              <span>Saved recordings</span>
+            </button>
+
+            {#if showRecorderProjects}
+              <div class="fixed inset-0 z-[99]" on:click={closeRecorderProjects} />
+              <div
+                class="absolute right-0 top-full mt-2 z-[100] w-[420px] max-w-[calc(100vw-2rem)] shadow-2xl"
+                on:click|stopPropagation
+              >
+                <ProjectsList />
+              </div>
+            {/if}
+          </div>
+        </div>
+
         <div class="relative flex-1 overflow-hidden rounded-3xl shadow-xl backdrop-blur-sm">
           <Preview />
         </div>

@@ -1,5 +1,22 @@
-import type { InputEventRecord, LastRecording, RecordingAssets } from "../stores";
+import type { InputEventRecord, LastRecording, RecordingAssets, RecordingProject, RecordingSegment } from "../stores";
 import type { AssetRecorderState, RecordingBackend } from "./recordingController.types";
+
+const toGlobalEvents = (segments: RecordingSegment[]): InputEventRecord[] => {
+  const out: InputEventRecord[] = [];
+  for (const segment of segments) {
+    const localStart = Math.max(0, segment.trimStart);
+    const localEnd = Math.max(localStart, segment.duration - Math.max(0, segment.trimEnd));
+    for (const event of segment.events) {
+      if (typeof event.t !== "number") continue;
+      if (event.t < localStart || event.t > localEnd) continue;
+      out.push({
+        ...event,
+        t: (event.t - localStart) + segment.startOffset,
+      } as InputEventRecord);
+    }
+  }
+  return out;
+};
 
 const saveAssetToStorage = async (
   backendAPI: RecordingBackend,
@@ -46,6 +63,71 @@ const revokeRecordingAssets = async (backendAPI: RecordingBackend, recording: La
   await cleanupAssetPaths(backendAPI, filePaths);
 };
 
+const buildRecordingResult = (args: {
+  assets: RecordingAssets;
+  inputEvents: InputEventRecord[];
+  durationMs: number;
+  fileExtension: string;
+  existingProject?: RecordingProject | null;
+}): LastRecording => {
+  const { assets, inputEvents, durationMs, fileExtension, existingProject } = args;
+
+  if (existingProject && existingProject.segments.length > 0) {
+    const existingDuration = existingProject.segments.reduce(
+      (sum, seg) => sum + (seg.duration - seg.trimStart - seg.trimEnd),
+      0
+    );
+
+    const newSegment: RecordingSegment = {
+      id: crypto.randomUUID(),
+      assets,
+      events: inputEvents,
+      startOffset: existingDuration,
+      duration: durationMs,
+      trimStart: 0,
+      trimEnd: 0,
+    };
+
+    const allSegments = [...existingProject.segments, newSegment];
+    const totalDuration = existingDuration + durationMs;
+
+    const primaryAssets = allSegments[0].assets;
+    const primaryPreviewAsset = primaryAssets.screen ?? primaryAssets.webcam ?? null;
+
+    return {
+      assets: primaryAssets,
+      events: toGlobalEvents(allSegments),
+      duration: totalDuration,
+      fileName: existingProject.fileName || `recording.${fileExtension}`,
+      previewPath: primaryPreviewAsset?.filePath,
+      segments: allSegments,
+      projectId: existingProject.id,
+      reviewState: existingProject.reviewState,
+    };
+  }
+
+  const segment: RecordingSegment = {
+    id: crypto.randomUUID(),
+    assets,
+    events: inputEvents,
+    startOffset: 0,
+    duration: durationMs,
+    trimStart: 0,
+    trimEnd: 0,
+  };
+
+  const previewAsset = assets.screen ?? assets.webcam ?? null;
+
+  return {
+    assets,
+    events: toGlobalEvents([segment]),
+    duration: durationMs,
+    fileName: `recording.${fileExtension}`,
+    previewPath: previewAsset?.filePath,
+    segments: [segment],
+  };
+};
+
 export const finalizeRecordingAssets = async (deps: {
   durationMs: number;
   recorders: AssetRecorderState[];
@@ -58,6 +140,8 @@ export const finalizeRecordingAssets = async (deps: {
   onNativeRecordingConsumed: () => void;
   setLastRecording: (value: LastRecording) => void;
   setAppView: (view: "recorder" | "review") => void;
+  existingProject?: RecordingProject | null;
+  clearCurrentProject?: () => void;
 }): Promise<void> => {
   const {
     durationMs,
@@ -71,6 +155,8 @@ export const finalizeRecordingAssets = async (deps: {
     onNativeRecordingConsumed,
     setLastRecording,
     setAppView,
+    existingProject,
+    clearCurrentProject,
   } = deps;
 
   const assets: RecordingAssets = {};
@@ -104,14 +190,19 @@ export const finalizeRecordingAssets = async (deps: {
 
     await revokeRecordingAssets(backendAPI, previousRecording);
 
-    const previewAsset = assets.screen ?? assets.webcam ?? null;
-    setLastRecording({
-      assets,
-      events: inputEvents,
-      duration: durationMs,
-      fileName: `recording.${fileExtension}`,
-      previewPath: previewAsset?.filePath,
-    });
+    setLastRecording(
+      buildRecordingResult({
+        assets,
+        inputEvents,
+        durationMs,
+        fileExtension,
+        existingProject,
+      })
+    );
+
+    if (existingProject && existingProject.segments.length > 0) {
+      clearCurrentProject?.();
+    }
 
     setAppView("review");
   } catch (error) {
