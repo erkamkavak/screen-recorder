@@ -133,6 +133,44 @@ declare global {
     destroyNotesOverlay?: () => void;
     startNotesShortcuts?: () => void;
     stopNotesShortcuts?: () => void;
+
+    // Project save/load
+    saveProject?: (payload: { projectName: string; recording: any; existingProjectId?: string }) => Promise<SaveProjectResult>;
+    listProjects?: () => Promise<ProjectMetadata[]>;
+    loadProject?: (projectId: string) => Promise<ProjectMetadata>;
+    deleteProject: (projectId: string) => Promise<boolean>;
+    getProjectsDir: () => Promise<string>;
+    changeProjectsDir: () => Promise<string | null>;
+  }
+
+  interface RecordingSegment {
+    id: string;
+    assets: Record<string, any>;
+    events: any[];
+    startOffset: number;
+    duration: number;
+    trimStart: number;
+    trimEnd: number;
+  }
+
+  interface ProjectMetadata {
+    id: string;
+    name: string;
+    createdAt: string;
+    updatedAt: string;
+    duration: number;
+    fileName: string;
+    events: any[];
+    assets: Record<string, any>;
+    segments?: RecordingSegment[];
+    previewPath: string | null;
+  }
+
+  interface SaveProjectResult {
+    success: boolean;
+    projectId: string;
+    projectDir: string;
+    metadata: ProjectMetadata;
   }
 
   interface NotesOverlayData {

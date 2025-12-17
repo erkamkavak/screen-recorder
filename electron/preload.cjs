@@ -72,4 +72,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
   destroyNotesOverlay: () => ipcRenderer.send("notes:destroy-overlay"),
   startNotesShortcuts: () => ipcRenderer.send("notes:start-shortcuts"),
   stopNotesShortcuts: () => ipcRenderer.send("notes:stop-shortcuts"),
+
+  // Project save/load APIs
+  saveProject: (payload) => ipcRenderer.invoke("project:save", payload),
+  listProjects: () => ipcRenderer.invoke("project:list"),
+  loadProject: (projectId) => ipcRenderer.invoke("project:load", projectId),
+  deleteProject: (projectId) => ipcRenderer.invoke("project:delete", projectId),
+  getProjectsDir: () => ipcRenderer.invoke("project:get-projects-dir"),
+  changeProjectsDir: () => ipcRenderer.invoke("project:change-dir"),
 });

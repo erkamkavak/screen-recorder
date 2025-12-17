@@ -15,6 +15,8 @@ const { Blob } = require("buffer");
 const fixWebmDuration = require("fix-webm-duration");
 const { uIOhook } = require("uiohook-napi");
 const notesHandler = require("./notes/notes-overlay-handler.cjs");
+const { getProjectsDir, setProjectsDir } = require("./config/projects.cjs");
+const { registerProjectsIpcHandlers } = require("./projects-ipc.cjs");
 
 // Native Rust addon for screen recording (xcap-based)
 let nativeAddon = null;
@@ -367,6 +369,14 @@ app.whenReady().then(() => {
       console.error("Unable to resolve asset URL", error);
       throw error;
     }
+  });
+
+  registerProjectsIpcHandlers({
+    ipcMain,
+    dialog,
+    getMainWindow: () => mainWindow,
+    getProjectsDir,
+    setProjectsDir,
   });
 
   ipcMain.on("input-capture:start", () => {

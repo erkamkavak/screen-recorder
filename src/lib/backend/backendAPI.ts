@@ -447,6 +447,85 @@ export const stopNotesShortcuts = (): void => {
   }
 };
 
+// Project save/load types
+export interface RecordingSegmentData {
+  id: string;
+  assets: Record<string, any>;
+  events: any[];
+  startOffset: number;
+  duration: number;
+  trimStart: number;
+  trimEnd: number;
+}
+
+export interface ProjectMetadata {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+  duration: number;
+  fileName: string;
+  events: any[];
+  assets: Record<string, any>;
+  segments?: RecordingSegmentData[];
+  previewPath: string | null;
+  reviewState?: any;
+}
+
+export interface SaveProjectResult {
+  success: boolean;
+  projectId: string;
+  projectDir: string;
+  metadata: ProjectMetadata;
+}
+
+// Project save/load APIs
+export const saveProject = async (
+  projectName: string,
+  recording: any,
+  existingProjectId?: string
+): Promise<SaveProjectResult> => {
+  if (isElectron) {
+    return await window.electronAPI.saveProject({ projectName, recording, existingProjectId });
+  }
+  throw new Error("Project save not available outside Electron");
+};
+
+export const listProjects = async (): Promise<ProjectMetadata[]> => {
+  if (isElectron) {
+    return await window.electronAPI.listProjects();
+  }
+  throw new Error("Project list not available outside Electron");
+};
+
+export const loadProject = async (projectId: string): Promise<ProjectMetadata> => {
+  if (isElectron) {
+    return await window.electronAPI.loadProject(projectId);
+  }
+  throw new Error("Project load not available outside Electron");
+};
+
+export const deleteProject = async (projectId: string): Promise<boolean> => {
+  if (isElectron) {
+    return await window.electronAPI.deleteProject(projectId);
+  }
+  throw new Error("Project delete not available outside Electron");
+};
+
+export const getProjectsDir = async (): Promise<string> => {
+  if (isElectron) {
+    return await window.electronAPI.getProjectsDir();
+  }
+  throw new Error("Projects directory not available outside Electron");
+};
+
+export const changeProjectsDir = async (): Promise<string | null> => {
+  if (isElectron) {
+    return await window.electronAPI.changeProjectsDir();
+  }
+  throw new Error("Change projects directory not available outside Electron");
+};
+
 // Export a single object for easier consumption
 export const backendAPI = {
   // Desktop capture
@@ -499,6 +578,14 @@ export const backendAPI = {
   destroyNotesOverlay,
   startNotesShortcuts,
   stopNotesShortcuts,
+
+  // Project save/load
+  saveProject,
+  listProjects,
+  loadProject,
+  deleteProject,
+  getProjectsDir,
+  changeProjectsDir,
 
   // Utilities
   getBackendInfo,
