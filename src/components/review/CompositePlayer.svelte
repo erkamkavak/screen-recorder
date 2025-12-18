@@ -24,6 +24,8 @@
     Share,
   } from "../../lib/stores";
   import { getAssetUrlFromFile } from "../../lib/backend/assetStorage";
+  import PlayerControls from "./PlayerControls.svelte";
+  import { reviewSessionStore, pointerRecords } from "../../lib/stores/reviewSession";
 
   export let assets: RecordingAssets;
   export let canvasSize: CanvasSize;
@@ -33,20 +35,12 @@
   export let theme: Theme;
   export let background: Background;
   export let snapshot: TimelineSnapshot;
-  export let showScreen: boolean = true;
-  export let showWebcam: boolean = true;
-  export let showMouse: boolean = true;
-  export let showClicks: boolean = true;
-  export let includeAudio: boolean = true;
   export let segments: RecordingSegment[] = [];
 
   export let transcript: { segments: { startMs: number; endMs: number; text: string }[] } | null = null;
-  export let showCaptions: boolean = true;
 
-  export let pointerRecords: any[] = [];
   export let pointerIconUrl: string | null = null;
   export let pointerIconPressedUrl: string | null = null;
-  export let pointerIndicatorSize: number = 18;
 
   let pointerIconImage: HTMLImageElement | null = null;
   let pointerPressedIconImage: HTMLImageElement | null = null;
@@ -93,7 +87,7 @@
   let animationId: number;
   let playing = false;
 
-  const hasMultipleSegments = () => (segments?.length ?? 0) > 1;
+  const hasSegments = () => (segments?.length ?? 0) >= 1;
 
   const getSegmentStartsSec = (segs: RecordingSegment[]) => {
     const starts: number[] = [];
@@ -183,7 +177,7 @@
 
   const setGlobalTime = async (timelineSec: number) => {
     const clamped = clampToTimeline(timelineSec);
-    if (!hasMultipleSegments()) {
+    if (!hasSegments()) {
       seek(clamped);
       return;
     }
@@ -200,7 +194,7 @@
     currentTime = clamped;
   };
 
-  $: if (segments || includeAudio) {
+  $: if (segments || $reviewSessionStore.includeAudioTrack) {
     const starts = getSegmentStartsSec(segments || []);
     segmentStartsSec = starts;
     segmentOriginalStartsSec = getSegmentOriginalStartsSec(segments || []);
@@ -271,7 +265,7 @@
     activeSegmentOriginalStartSec = 0;
     activeSegmentId = null;
 
-    if (hasMultipleSegments()) {
+    if (hasSegments()) {
       const starts = getSegmentStartsSec(segments);
       segmentStartsSec = starts;
       segmentOriginalStartsSec = getSegmentOriginalStartsSec(segments);
@@ -283,7 +277,7 @@
         const segScreenUrl = await safeLoad(screenAsset);
         if (!segScreenUrl) continue;
         const segWebcamUrl = await safeLoad(segAssets.webcam ?? null);
-        const segAudioUrl = includeAudio ? await safeLoad(segAssets.audio ?? null) : null;
+        const segAudioUrl = $reviewSessionStore.includeAudioTrack ? await safeLoad(segAssets.audio ?? null) : null;
 
         const segScreenVideo = createVideoElement(segScreenUrl);
         const segWebcamVideo = segWebcamUrl ? createVideoElement(segWebcamUrl) : null;
@@ -310,10 +304,15 @@
       // Find first segment that actually loaded media for
       const firstIdx = segments.findIndex((s) => segmentMediaById.has(s.id));
       if (firstIdx < 0) return;
-      await activateSegment(firstIdx, segments[firstIdx].trimStart / 1000);
+      
+      const info = getSegmentForTime(segments, currentTime);
+      const targetIdx = info?.segmentIndex ?? firstIdx;
+      const targetLocalTime = info?.localTime ?? (segments[targetIdx].trimStart / 1000);
+      
+      await activateSegment(targetIdx, targetLocalTime);
       duration = Math.max(0, getTotalSegmentsDuration(segments) / 1000);
-      currentTime = 0;
     } else {
+      // Fallback for absolutely no segments (should not happen with lastRecording)
       const screenAsset = assets.screen;
       if (!screenAsset) return;
       screenUrl = await safeLoad(screenAsset);
@@ -325,7 +324,7 @@
       webcamVideo = webcamUrl ? createVideoElement(webcamUrl) : null;
       if (webcamVideo) await waitForMetadata(webcamVideo);
 
-      audioUrl = includeAudio ? await safeLoad(assets.audio ?? null) : null;
+      audioUrl = $reviewSessionStore.includeAudioTrack ? await safeLoad(assets.audio ?? null) : null;
       audioEl = audioUrl ? createAudioElement(audioUrl) : null;
     }
 
@@ -373,14 +372,14 @@
     };
 
     // Handle NaN duration (can happen if metadata didn't load properly)
-    if (!hasMultipleSegments()) {
+    if (!hasSegments() && screenVideo) {
       const videoDuration = screenVideo.duration;
       duration = isFinite(videoDuration) && videoDuration > 0 ? videoDuration : 0;
       currentTime = screenVideo.currentTime || 0;
     }
     
     // If duration is still 0, try to get it from durationchange event
-    if (!hasMultipleSegments() && duration === 0) {
+    if (!hasSegments() && screenVideo && duration === 0) {
       screenVideo.addEventListener("durationchange", () => {
         const d = screenVideo?.duration;
         if (d && isFinite(d) && d > 0) {
@@ -426,11 +425,11 @@
     if (!ctx || !screenVideo || !drawArgs) return;
     const localOriginalTimeSec = screenVideo.currentTime || 0;
     const segmentZoomEvents = activeSegmentId ? (snapshot.segmentEvents?.[activeSegmentId] ?? []) : [];
-    const zoomEvalTimeSec = hasMultipleSegments() ? localOriginalTimeSec : (screenVideo.currentTime || 0);
+    const zoomEvalTimeSec = hasSegments() ? localOriginalTimeSec : (screenVideo.currentTime || 0);
 
-    const segmentPointerRecords = hasMultipleSegments() && activeSegment
+    const segmentPointerRecords = hasSegments() && activeSegment
       ? getPointerRecords(activeSegment.events)
-      : pointerRecords;
+      : $pointerRecords;
     const segmentClickRecords = segmentPointerRecords.filter((event) => event.kind === "click");
 
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
@@ -443,25 +442,25 @@
     const zoomFocusX = pointerState.visible ? pointerState.x : focusX;
     const zoomFocusY = pointerState.visible ? pointerState.y : focusY;
     applyZoom(scale, zoomFocusX, zoomFocusY);
-    if (showScreen) {
+    if (true) { // Always show screen if it's there
       drawScreenShare(drawArgs);
       const placement = getPlacement();
-      if (ctx && placement && showClicks) {
+      if (ctx && placement && $reviewSessionStore.includeClickTrack) {
         drawClickRipplesOverlay({
           ctx,
           placement,
           clickRecords: segmentClickRecords,
           timeSec: zoomEvalTimeSec,
           canvasSize,
-          pointerSize: pointerIndicatorSize,
+          pointerSize: $reviewSessionStore.pointerIndicatorSize,
         });
       }
-      if (ctx && placement && showMouse) {
+      if (ctx && placement && $reviewSessionStore.includePointerTrack) {
         drawPointerCursorOverlay({
           ctx,
           placement,
           canvasSize,
-          pointerSize: pointerIndicatorSize,
+          pointerSize: $reviewSessionStore.pointerIndicatorSize,
           pointerState,
           iconDefault: pointerIconImage,
           iconPressed: pointerPressedIconImage,
@@ -471,13 +470,13 @@
     ctx.restore();
 
     // Draw webcam without zoom
-    if (showWebcam && webcamVideo) {
+    if ($reviewSessionStore.includeWebcamTrack && webcamVideo) {
       drawWebcam(drawArgs);
     }
 
     // Draw captions outside zoom
-    if (showScreen) {
-      if (ctx && showCaptions && transcript?.segments?.length) {
+    if (true) {
+      if (ctx && $reviewSessionStore.showCaptions && transcript?.segments?.length) {
         drawCaptionsOverlay({
           ctx,
           canvas: canvasEl,
@@ -518,7 +517,7 @@
       await Promise.all([
         screenVideo.play(),
         webcamVideo?.play() ?? Promise.resolve(),
-        includeAudio && audioEl ? audioEl.play() : Promise.resolve(),
+        $reviewSessionStore.includeAudioTrack && audioEl ? audioEl.play() : Promise.resolve(),
       ]);
       startLoop();
       startSyncTimeLoop();
@@ -529,8 +528,8 @@
 
   const updateAudio = async () => {
     if (!assets) return;
-    if (hasMultipleSegments()) return;
-    if (includeAudio) {
+    if (hasSegments()) return;
+    if ($reviewSessionStore.includeAudioTrack) {
       if (!audioEl) {
         const url = await safeLoad(assets.audio ?? null);
         audioUrl = url;
@@ -549,8 +548,7 @@
 
   $: (async () => { await updateAudio(); })();
 
-  // Redraw once when toggles change, snapshot (zooms) change, and we're paused.
-  $: if (!playing && (pointerIndicatorSize !== undefined || snapshot !== undefined)) {
+  $: if (!playing && (snapshot !== undefined)) {
     drawFrame();
   }
 
@@ -567,7 +565,7 @@
   const seek = (value: number) => {
     if (!screenVideo) return;
     const clamped = clampToTimeline(value);
-    if (hasMultipleSegments()) {
+    if (hasSegments()) {
       void setGlobalTime(clamped).then(() => {
         if (!playing) drawFrame();
       });
@@ -585,7 +583,7 @@
     const epsilon = 0.02;
     const update = () => {
       if (!screenVideo) return;
-      if (hasMultipleSegments() && activeSegment) {
+      if (hasSegments() && activeSegment) {
         const local = screenVideo.currentTime;
         const effectiveLocal = Math.max(0, local - (activeSegment.trimStart / 1000));
         currentTime = activeSegmentStartSec + effectiveLocal;
@@ -596,7 +594,7 @@
       if (duration > 0 && currentTime >= duration - epsilon) {
         pause();
         currentTime = duration;
-        if (hasMultipleSegments()) {
+        if (hasSegments()) {
           void setGlobalTime(currentTime);
         } else {
           screenVideo.currentTime = currentTime;
@@ -607,7 +605,7 @@
         return;
       }
 
-      if (hasMultipleSegments() && activeSegment && segmentMediaById.size) {
+      if (hasSegments() && activeSegment && segmentMediaById.size) {
         const localEnd = (activeSegment.duration - activeSegment.trimEnd) / 1000;
         if (screenVideo.currentTime >= localEnd - epsilon) {
           let nextIdx = activeSegmentIndex + 1;
@@ -638,30 +636,9 @@
     syncId = requestAnimationFrame(update);
   };
 
-  const togglePlay = async () => {
-    if (playing) pause();
-    else await play();
-  };
-
-  const onSeekInput = (e: Event) => {
-    const target = e.target as HTMLInputElement;
-    const value = Number(target.value);
-    if (!Number.isNaN(value)) seek(value);
-    // redraw when paused
-    if (!playing && !hasMultipleSegments()) drawFrame();
-  };
-
   onMount(async () => {
     await loadAssets();
   });
-
-  const formatTime = (value: number) => {
-    if (!isFinite(value) || value < 0) return "00:00";
-    const wholeSeconds = Math.floor(value);
-    const minutes = Math.floor(wholeSeconds / 60);
-    const seconds = wholeSeconds % 60;
-    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-  };
 
   onDestroy(() => {
     cancelAnimationFrame(animationId);
@@ -670,41 +647,43 @@
 </script>
 
 <div class="player-shell">
-  <div class="video-frame" style={`aspect-ratio: ${canvasSize.width}/${canvasSize.height};`}>
+  <div class="video-frame">
     <canvas bind:this={canvasEl} />
-    <div class="controls-overlay">
-      <button class="control-button" on:click={togglePlay} aria-label={playing ? "Pause" : "Play"}>
-        {#if playing}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5h3v14H7zM14 5h3v14h-3z" /></svg>
-        {:else}
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
-        {/if}
-      </button>
-      <div class="time-display">{formatTime(currentTime)} / {formatTime(duration)}</div>
-    </div>
   </div>
-  <div class="timeline">
-    <input
-      class="timeline-range"
-      type="range"
-      min={0}
-      max={duration}
-      step="0.01"
-      value={currentTime}
-      on:input={onSeekInput}
-    />
-  </div>
+
+  <PlayerControls
+    playing={playing}
+    currentTime={currentTime}
+    duration={duration}
+    onPlay={play}
+    onPause={pause}
+    onSeek={seek}
+  />
 </div>
 
-
 <style>
-  .player-shell { display: flex; flex-direction: column; gap: 0.75rem; }
-  .video-frame { position: relative; width: 100%; background: transparent; display: flex; overflow: hidden; border-radius: 0; }
-  canvas { width: 100%; height: 100%; display: block; }
-  .controls-overlay { position: absolute; left: 0; bottom: 0; padding: 0.5rem; display: flex; align-items: center; gap: 0.5rem; }
-  .control-button { width: 2.25rem; height: 2.25rem; border-radius: 9999px; border: 1px solid #cbd5e1; background: #ffffff; color: #111827; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 1px 2px rgba(0,0,0,0.06); }
-  .time-display { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; font-size: 0.85rem; color: #cbd5e1; }
-  .timeline-range { width: 100%; appearance: none; background: #e5e7eb; height: 0.35rem; border-radius: 9999px; outline: none; cursor: pointer; }
-  .timeline-range::-webkit-slider-thumb { appearance: none; width: 0.85rem; height: 0.85rem; border-radius: 9999px; background: white; border: 2px solid #111827; }
-  .timeline-range::-moz-range-thumb { width: 0.85rem; height: 0.85rem; border-radius: 9999px; background: white; border: 2px solid #111827; }
+  .player-shell {
+    display: flex;
+    flex-direction: column;
+    background: #0f172a;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  }
+
+  .video-frame {
+    position: relative;
+    width: 100%;
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  canvas {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
 </style>
+
