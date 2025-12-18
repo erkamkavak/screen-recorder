@@ -56,6 +56,7 @@
   export let projectSaved: boolean = false;
 
   export let onContinueRecording: () => void = () => {};
+  export let onResetAndNew: () => void = () => {};
   export let canContinueRecording: boolean = true;
 
   export let onSegmentTrimChange: ((segmentId: string, edge: "start" | "end", valueMs: number) => void) | null = null;
@@ -192,6 +193,8 @@
       onRender={downloadEditedVideo}
       {onCancelRender}
       {resetToRecorder}
+      {onResetAndNew}
+      {onContinueRecording}
       {videoDuration}
     />
   </div>

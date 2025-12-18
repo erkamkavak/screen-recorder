@@ -4,6 +4,7 @@
     activeTheme,
     appView,
     canvasDimensions,
+    currentProject,
     generalLayoutState,
     lastRecording,
     screenLayoutState,
@@ -342,6 +343,12 @@
   };
 
   const saveProject = () => saveProjectAction((v) => (isSavingProject = v), () => (projectSaved = true));
+  const resetAndNewProject = () => {
+    lastRecording.set(null);
+    currentProject.set(null);
+    $appView = "recorder";
+  };
+
   const continueRecording = () => continueRecordingAction();
 
   let currentCancelToken = { current: null as { cancelled: boolean } | null };
@@ -385,6 +392,7 @@
   {downloadEditedVideo}
   onCancelRender={cancelCurrentRender}
   {resetToRecorder}
+  onResetAndNew={resetAndNewProject}
   {addZoomForClick}
   renderFormatOptions={renderFormatOptions}
   resolutionPresets={resolutionPresets}
@@ -395,3 +403,4 @@
   onContinueRecording={continueRecording}
   onSegmentTrimChange={handleSegmentTrimChange}
 />
+
