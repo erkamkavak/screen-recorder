@@ -6,7 +6,7 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: colors.purple,
+        primary: "#1E2852", // Changed from purple to fmd-navy
         fmd: {
           white: {DEFAULT: "#ffffff", background: "#FFFFFF05"},
           black: "#000000",

@@ -31,7 +31,6 @@
 </script>
 
 <div class="pointer-style-panel">
-  <h3>Pointer style</h3>
   <RangeInput
     name="pointerSize"
     title="Pointer size"
@@ -61,7 +60,7 @@
     {/each}
   </div>
   <div class="pointer-zip-import">
-    <label class="text-sm font-semibold text-slate-700 dark:text-slate-200">
+    <label class="section-sub-title">
       Import cursor pack (.zip)
     </label>
     <div class="flex flex-wrap items-center gap-3">
@@ -88,19 +87,19 @@
 
 <style>
   .pointer-style-panel {
-    border-top: 1px solid #e5e7eb;
-    padding-top: 1.25rem;
     display: flex;
     flex-direction: column;
-    gap: 0.8rem;
+    gap: 1rem;
   }
 
-  .pointer-style-panel h3 {
-    margin: 0;
-    font-size: 0.9rem;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
+  .section-sub-title {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 700;
     color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
   }
 
   .pointer-hint {
@@ -116,37 +115,52 @@
   }
 
   .pointer-icon-option {
-    border: 1px solid #e5e7eb;
-    border-radius: 0.75rem;
-    padding: 0.35rem 0.6rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 0.4rem 0.75rem;
     display: inline-flex;
     align-items: center;
-    gap: 0.45rem;
-    font-size: 0.85rem;
+    gap: 0.5rem;
     background: #fff;
     color: #334155;
     cursor: pointer;
+    transition: all 0.2s;
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+
+  .pointer-icon-option:hover {
+    border-color: #cbd5e1;
+    background: #f8fafc;
   }
 
   .pointer-icon-option.active {
-    border-color: #111827;
+    border-color: #3b82f6;
+    background: #eff6ff;
+    color: #1d4ed8;
   }
 
   .pointer-icon-option-preview {
-    width: 1.75rem;
-    height: 1.75rem;
-    border-radius: 0.45rem;
-    border: 1px solid #cbd5e1;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
     background-color: var(--option-background, #f97316);
     background-image: var(--option-icon, none);
-    background-size: cover;
+    background-size: contain;
+    background-repeat: no-repeat;
     background-position: center;
   }
 
   .pointer-zip-import {
+    margin-top: 0.5rem;
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0.75rem;
+    padding: 1rem;
+    background: #f8fafc;
+    border-radius: 16px;
+    border: 1px dashed #e2e8f0;
   }
 
   .pointer-zip-message {
@@ -155,3 +169,4 @@
     color: #475569;
   }
 </style>
+
