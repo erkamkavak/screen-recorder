@@ -1,6 +1,6 @@
 <script lang="ts">
   import Preview from "./components/Preview.svelte";
-  import { appView, isRecording } from "./lib/stores";
+  import { appView, isRecording, currentProject } from "./lib/stores";
   import ActionBar from "./components/ActionBar.svelte";
   import ReviewView from "./components/ReviewView.svelte";
   import RecorderSidebar from "./components/RecorderSidebar.svelte";
@@ -63,8 +63,27 @@
     <div class="grid h-full w-full grid-rows-[minmax(0,1fr)_auto] gap-5 px-4 py-5 lg:grid-cols-[minmax(0,1fr)_26rem] lg:grid-rows-1 lg:gap-8 lg:px-8">
       <div class="flex min-w-0 flex-col gap-4">
         <div class="flex items-center justify-between px-1">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-3">
             <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">Live Preview</h2>
+            {#if $currentProject}
+              <div class="flex items-center gap-2 rounded-lg bg-indigo-50 px-2.5 py-1.5 border border-indigo-100 dark:bg-indigo-900/20 dark:border-indigo-800/50 group transition-all hover:bg-indigo-100 dark:hover:bg-indigo-900/30">
+                <div class="flex items-center gap-2">
+                  <div class="flex h-2 w-2 rounded-full bg-indigo-500 animate-pulse"></div>
+                  <span class="text-[11px] font-bold uppercase tracking-tight text-indigo-700 dark:text-indigo-300">
+                    Project: <span class="text-indigo-900 dark:text-indigo-100 ml-0.5">{$currentProject.name || 'Untitled'}</span>
+                  </span>
+                </div>
+                <button 
+                  class="ml-1 flex h-4 w-4 items-center justify-center rounded-md text-indigo-400 hover:bg-indigo-200 hover:text-indigo-600 dark:hover:bg-indigo-800 dark:hover:text-indigo-200 transition-colors"
+                  on:click={() => currentProject.set(null)}
+                  title="Finish & Start New Project"
+                >
+                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            {/if}
           </div>
           <div class="relative">
             <button

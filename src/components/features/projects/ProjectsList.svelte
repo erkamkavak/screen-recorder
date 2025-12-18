@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { backendAPI, type ProjectMetadata } from "../../../lib/backend/backendAPI";
-  import { lastRecording, appView } from "../../../lib/stores";
+  import { lastRecording, appView, currentProject } from "../../../lib/stores";
   import { humanDuration } from "../../../lib/utils/duration";
 
   let projects: ProjectMetadata[] = [];
@@ -48,6 +48,15 @@
         previewPath: loaded.previewPath ?? undefined,
         segments: loaded.segments,
         projectId: loaded.id,
+        reviewState: (loaded as any).reviewState,
+      });
+      currentProject.set({
+        id: loaded.id,
+        name: project.name,
+        segments: loaded.segments,
+        totalDuration: loaded.duration,
+        fileName: loaded.fileName,
+        previewPath: loaded.previewPath ?? undefined,
         reviewState: (loaded as any).reviewState,
       });
       appView.set("review");
