@@ -80,7 +80,7 @@
 
   .progress-slider {
     width: 100%;
-    accent-color: #f97316;
+    accent-color: #F04D21; /* Brand Red */
     cursor: pointer;
   }
 

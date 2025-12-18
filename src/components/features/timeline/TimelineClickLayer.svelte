@@ -65,46 +65,56 @@
 
   .click-line {
     position: absolute;
-    top: 15px;
-    bottom: 15px;
+    top: 10px;
+    bottom: 10px;
     width: 2px;
     background: #cbd5e1;
     border: none;
     padding: 0;
     cursor: pointer;
     pointer-events: auto;
-    transition: all 0.1s ease;
+    transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .click-line:hover {
     background: #94a3b8;
-    width: 3px;
+    width: 4px;
     z-index: 10;
   }
 
   .click-line.has-zoom {
     background: #94a3b8;
+    opacity: 0.7;
   }
 
   .click-line.selected {
-    background: #f97316;
-    width: 3px;
+    background: #F04D21; /* Brand Red */
+    width: 4px;
     z-index: 11;
+    box-shadow: 0 0 8px rgba(240, 77, 33, 0.4);
   }
 
   .click-tooltip {
     position: absolute;
     bottom: 100%;
     left: 50%;
-    transform: translateX(-50%);
+    transform: translateX(-50%) translateY(0);
     background: #1e293b;
     color: white;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.65rem;
-    margin-bottom: 4px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    margin-bottom: 8px;
     pointer-events: none;
     white-space: nowrap;
-    z-index: 20;
+    z-index: 50;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    animation: tooltip-in 0.2s ease-out;
+  }
+
+  @keyframes tooltip-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
   }
 </style>

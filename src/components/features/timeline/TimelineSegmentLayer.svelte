@@ -88,29 +88,32 @@
 
   .segment-region {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    background: #f1f5f9;
-    border-radius: 4px;
-    opacity: 0.5;
+    top: 4px;
+    bottom: 4px;
+    background: #f8fafc;
+    border-radius: 6px;
+    opacity: 0.6;
     border: 1px dashed #cbd5e1;
     display: flex;
     align-items: center;
     justify-content: center;
+    transition: all 0.2s ease;
   }
   
   .segment-region.has-trim {
-    background: #e2e8f0;
+    background: #f1f5f9;
+    border-style: solid;
   }
   
   .segment-region-label {
-    font-size: 0.65rem;
+    font-size: 0.7rem;
     font-weight: 700;
     color: #94a3b8;
     background: white;
-    padding: 1px 4px;
-    border-radius: 3px;
+    padding: 2px 6px;
+    border-radius: 4px;
     border: 1px solid #e2e8f0;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   }
 
   .segment-kept {
@@ -118,30 +121,31 @@
     top: 0;
     bottom: 0;
     background: white;
-    border: 1.5px solid #64748b;
-    border-radius: 6px;
+    border: 2px solid #1E2852; /* Brand Navy */
+    border-radius: 8px;
     z-index: 1;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
   }
 
   .segment-trim-handle {
     position: absolute;
-    top: -4px;
-    bottom: -4px;
-    width: 8px;
-    background: #64748b;
-    border: none;
-    border-radius: 4px;
+    top: -6px;
+    bottom: -6px;
+    width: 10px;
+    background: #1E2852;
+    border: 2px solid white;
+    border-radius: 999px;
     cursor: ew-resize;
-    z-index: 3;
-    transition: all 0.15s ease;
+    z-index: 10;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     padding: 0;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
   }
   
   .segment-trim-handle:hover {
-    background: #f97316;
-    width: 10px;
-    transform: translateX(-1px);
+    background: #F04D21; /* Brand Red on hover */
+    width: 12px;
+    transform: translateX(-50%) scale(1.1);
   }
   
   .segment-trim-handle.start { transform: translateX(-50%); }

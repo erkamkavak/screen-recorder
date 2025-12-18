@@ -36,17 +36,19 @@
     top: 0;
     left: 0;
     width: 1px;
-    height: 8px;
-    background: #cbd5e1;
+    height: 10px;
+    background: #e2e8f0;
   }
 
   .marker-label {
     position: absolute;
-    top: 12px;
+    top: 14px;
     left: 4px;
     font-size: 0.65rem;
-    color: #64748b;
+    font-weight: 600;
+    color: #94a3b8;
     white-space: nowrap;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-family: 'Outfit', ui-sans-serif, system-ui;
+    font-variant-numeric: tabular-nums;
   }
 </style>

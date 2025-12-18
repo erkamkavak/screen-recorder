@@ -10,13 +10,13 @@
 <style>
   .current-time-indicator {
     position: absolute;
-    top: 10px;
-    bottom: 10px;
+    top: 0;
+    bottom: 0;
     width: 2px;
-    background: #f97316;
+    background: #F04D21; /* Brand Red */
     z-index: 50;
     pointer-events: none;
-    box-shadow: 0 0 8px rgba(249, 115, 22, 0.4);
+    box-shadow: 0 0 10px rgba(240, 77, 33, 0.5);
   }
 
   .current-time-indicator::after {
@@ -25,11 +25,11 @@
     top: -4px;
     left: 50%;
     transform: translateX(-50%);
-    width: 10px;
-    height: 10px;
-    background: #f97316;
-    border-radius: 50%;
+    width: 12px;
+    height: 12px;
+    background: #F04D21;
     border: 2px solid white;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    border-radius: 50%;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   }
 </style>

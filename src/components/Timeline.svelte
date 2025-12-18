@@ -21,6 +21,7 @@
   export let duration = 0;
   export let currentTime = 0;
   export let onAddZoomForClick: ((clickEvent: PointerEventRecord, seconds?: number) => void) | null = null;
+  export let onSeek: ((seconds: number) => void) | null = null;
   export let segments: RecordingSegment[] = [];
   export let onSegmentTrimChange: ((segmentId: string, edge: "start" | "end", valueMs: number) => void) | null = null;
 
@@ -29,7 +30,7 @@
   
   // Drag state
   interface DragState {
-    type: "event-move" | "event-resize-start" | "event-resize-end" | "segment-trim";
+    type: "event-move" | "event-resize-start" | "event-resize-end" | "segment-trim" | "scrub";
     id?: string;
     segmentId?: string;
     edge?: "start" | "end";
@@ -73,6 +74,23 @@
   let optimisticSegmentTrim: { id: string; trimStartSec: number; trimEndSec: number } | null = null;
 
   // Handlers
+  const handleTrackPointerDown = (e: PointerEvent) => {
+    if (!trackEl || zoomDraft) return;
+    const rect = trackEl.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const seconds = (x / rect.width) * duration;
+    
+    if (onSeek) onSeek(seconds);
+
+    dragState = {
+        type: 'scrub',
+        startX: e.clientX - rect.left,
+        initialTime: seconds
+    };
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', stopDragging);
+  };
+
   const handleTrackClick = (e: MouseEvent) => {
     if (!trackEl || !zoomDraft) return;
     const rect = trackEl.getBoundingClientRect();
@@ -102,6 +120,13 @@
     if (!dragState || !trackEl) return;
     const rect = trackEl.getBoundingClientRect();
     const currentX = e.clientX - rect.left;
+
+    if (dragState.type === 'scrub') {
+        const seconds = (currentX / rect.width) * duration;
+        if (onSeek) onSeek(Math.max(0, Math.min(duration, seconds)));
+        return;
+    }
+
     const deltaX = currentX - dragState.startX;
     const deltaTime = (deltaX / rect.width) * duration;
 
@@ -291,6 +316,7 @@
 
   <div 
     class="timeline-track-outer"
+    on:pointerdown={handleTrackPointerDown}
     on:click={handleTrackClick}
     bind:this={trackEl}
   >
@@ -341,23 +367,29 @@
   .timeline-container {
     display: flex;
     flex-direction: column;
-    gap: 1rem;
-    padding: 1.25rem;
-    background: #ffffff;
-    border-radius: 16px;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
-    margin-top: 1rem;
+    gap: 1.25rem;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 20px;
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    box-shadow: 
+      0 10px 15px -3px rgba(0, 0, 0, 0.04), 
+      0 4px 6px -2px rgba(0, 0, 0, 0.02),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+    margin-top: 1.5rem;
   }
 
   .timeline-track-outer {
     position: relative;
-    height: 100px;
-    background: #f8fafc;
-    border-radius: 12px;
+    height: 120px;
+    background: linear-gradient(to bottom, #f8fafc, #f1f5f9);
+    border-radius: 14px;
     border: 1px solid #e2e8f0;
     cursor: crosshair;
     overflow: visible;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.03);
   }
 
   .timeline-track-inner {
@@ -370,21 +402,26 @@
 
   .timeline-footer {
     display: flex;
-    align-items: baseline;
-    gap: 0.25rem;
+    align-items: center;
+    gap: 0.5rem;
     justify-content: flex-end;
+    padding-top: 0.5rem;
+    border-top: 1px solid #f1f5f9;
   }
 
   .time-display.current {
-    font-size: 1.1rem;
-    font-weight: 700;
-    color: #0f172a;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: #1E2852; /* Brand Navy */
+    font-family: 'Outfit', ui-serif, system-ui; /* Modern font fallback */
+    font-variant-numeric: tabular-nums;
   }
 
   .time-total {
-    font-size: 0.85rem;
-    color: #64748b;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #94a3b8;
+    font-family: 'Outfit', ui-serif, system-ui;
+    font-variant-numeric: tabular-nums;
   }
 </style>

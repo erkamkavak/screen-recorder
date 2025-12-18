@@ -49,6 +49,8 @@
 
   export let onContinueRecording: () => void;
   export let canContinueRecording: boolean = true;
+
+  let player: any;
 </script>
 
 <section
@@ -89,6 +91,7 @@
 
     <div class="player-frame narrow" bind:this={playerFrameEl}>
       <CompositePlayer
+        bind:this={player}
         assets={assets}
         canvasSize={canvasSize}
         generalLayoutState={generalLayoutState}
@@ -112,6 +115,10 @@
       duration={timelineDuration}
       currentTime={currentTime}
       onAddZoomForClick={addZoomForClick}
+      onSeek={(t) => {
+        console.log('Timeline seek to:', t);
+        // TODO: call player.seekTo(t) or equivalent
+      }}
       {segments}
       {onSegmentTrimChange}
     />

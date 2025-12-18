@@ -89,50 +89,54 @@
 
   .timeline-event {
     position: absolute;
-    top: 0;
-    bottom: 0;
-    background: #0f172a;
+    top: 4px; /* Added some margin */
+    bottom: 4px;
+    background: #1e293b; /* Slate-800 for non-selected */
     color: white;
-    border-radius: 6px;
+    border-radius: 8px; /* Slightly more rounded */
     cursor: move;
     pointer-events: auto;
     display: flex;
     align-items: center;
-    padding: 0 0.4rem;
-    min-width: 12px;
-    font-size: 0.7rem;
-    font-weight: 600;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    border: 1px solid rgba(255,255,255,0.1);
+    padding: 0 0.6rem;
+    min-width: 24px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
     z-index: 5;
-    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
   .timeline-event:hover {
-    background: #1e293b;
-    border-color: rgba(255,255,255,0.2);
+    background: #334155;
+    border-color: rgba(255, 255, 255, 0.3);
+    transform: translateY(-1px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
   }
 
   .timeline-event.selected {
-    background: #4f46e5;
+    background: #1E2852; /* Brand Navy */
     z-index: 10;
-    box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.4);
-    border-color: #818cf8;
+    box-shadow: 0 0 0 3px rgba(30, 40, 82, 0.3), 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    border-color: #364c99;
   }
 
   .timeline-event.dragging {
-    opacity: 0.8;
+    opacity: 0.9;
     cursor: grabbing;
     z-index: 20;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    transform: scale(1.02);
   }
 
   .event-label {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.4rem;
     white-space: nowrap;
     overflow: hidden;
+    user-select: none;
   }
 
   .label-text {
