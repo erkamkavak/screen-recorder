@@ -6,12 +6,8 @@
   import { backendAPI } from "../../lib/backend/backendAPI";
   import { transcriptionJob, transcriptionResult, transcriptionSettings } from "../../lib/stores/transcription";
 
-  type RenderFormat = "mp4" | "webm";
-  type RenderFormatOption = {
-    value: RenderFormat;
-    label: string;
-    supported: boolean;
-  };
+  import { reviewSessionStore } from "../../lib/stores/reviewSession";
+  import type { RenderFormatOption } from "../../lib/review/reviewTypes";
 
   export let asideWidthPx: number;
 
@@ -19,12 +15,6 @@
   export let hasAudio: boolean;
   export let audioFilePath: string | null = null;
 
-  export let includePointerTrack: boolean;
-  export let includeClickTrack: boolean;
-  export let includeWebcamTrack: boolean;
-  export let includeAudioTrack: boolean;
-
-  export let showCaptions: boolean;
   export let captionsAvailable: boolean;
 
   let transcriptionProviders: string[] = [];
@@ -127,20 +117,10 @@
 
   loadProviders();
 
-  export let renderFormat: RenderFormat;
   export let renderFormatOptions: RenderFormatOption[] = [];
-  export let onRenderFormatSelect: (event: Event) => void;
-
   export let resolutionPresets: readonly { id: string; label: string; scale: number }[] = [];
-  export let selectedResolutionPreset: string;
-  export let onResolutionPresetSelect: (event: Event) => void;
-
   export let frameRatePresets: readonly { id: string; label: string; fps: number | "original" }[] = [];
-  export let selectedFrameRatePreset: string;
-  export let onFrameRatePresetSelect: (event: Event) => void;
 
-  export let pointerSize: number;
-  export let pointerIconSelection: string;
   export let pointerIconOptions: readonly {
     id: string;
     label: string;
@@ -148,8 +128,6 @@
     pressedData?: string | null;
   }[] = [];
   export let zipPointerImportMessage: string;
-  export let onPointerSizeChange: (value: number) => void;
-  export let onPointerIconSelect: (selection: string) => void;
   export let onZipPointerFileChange: (event: Event) => void;
 
   export let isRenderingVideo: boolean;
@@ -159,6 +137,22 @@
   export let resetToRecorder: () => void;
 
   export let videoDuration: number;
+
+  const onRenderFormatSelect = (e: Event) => {
+    const val = (e.currentTarget as HTMLSelectElement).value;
+    reviewSessionStore.setRenderFormat(val as any);
+  };
+
+  const onResolutionPresetSelect = (e: Event) => {
+    const val = (e.currentTarget as HTMLSelectElement).value;
+    reviewSessionStore.setSelectedResolutionPreset(val as any);
+  };
+
+  const onFrameRatePresetSelect = (e: Event) => {
+    const val = (e.currentTarget as HTMLSelectElement).value;
+    reviewSessionStore.setSelectedFrameRatePreset(val as any);
+  };
+
 </script>
 
 <aside class="review-aside" style={`width: ${asideWidthPx}px;`}>
@@ -166,18 +160,18 @@
   <p class="aside-text">Control the render, then download it as a video file.</p>
 
   <div class="toggle-group">
-    <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includePointerTrack} /> <span>Include pointer</span></label>
-    <label class="cb"><input type="checkbox" class="cb-input" bind:checked={includeClickTrack} /> <span>Show click interactions</span></label>
+    <label class="cb"><input type="checkbox" class="cb-input" bind:checked={$reviewSessionStore.includePointerTrack} /> <span>Include pointer</span></label>
+    <label class="cb"><input type="checkbox" class="cb-input" bind:checked={$reviewSessionStore.includeClickTrack} /> <span>Show click interactions</span></label>
     <label class="cb" class:disabled={!hasWebcam}>
-      <input type="checkbox" class="cb-input" bind:checked={includeWebcamTrack} disabled={!hasWebcam} />
+      <input type="checkbox" class="cb-input" bind:checked={$reviewSessionStore.includeWebcamTrack} disabled={!hasWebcam} />
       <span>Include webcam</span>
     </label>
     <label class="cb" class:disabled={!hasAudio}>
-      <input type="checkbox" class="cb-input" bind:checked={includeAudioTrack} disabled={!hasAudio} />
+      <input type="checkbox" class="cb-input" bind:checked={$reviewSessionStore.includeAudioTrack} disabled={!hasAudio} />
       <span>Include audio</span>
     </label>
     <label class="cb" class:disabled={!captionsAvailable}>
-      <input type="checkbox" class="cb-input" bind:checked={showCaptions} disabled={!captionsAvailable} />
+      <input type="checkbox" class="cb-input" bind:checked={$reviewSessionStore.showCaptions} disabled={!captionsAvailable} />
       <span>Show captions</span>
     </label>
   </div>
@@ -219,7 +213,7 @@
     <div class="select-wrapper">
       <select
         id="render-format-select"
-        value={renderFormat}
+        value={$reviewSessionStore.renderFormat}
         on:change={onRenderFormatSelect}
       >
         {#each renderFormatOptions as option}
@@ -240,7 +234,7 @@
       <div class="select-wrapper">
         <select
           id="resolution-preset-select"
-          value={selectedResolutionPreset}
+          value={$reviewSessionStore.selectedResolutionPreset}
           on:change={onResolutionPresetSelect}
         >
           {#each resolutionPresets as preset}
@@ -257,7 +251,7 @@
       <div class="select-wrapper">
         <select
           id="framerate-preset-select"
-          value={selectedFrameRatePreset}
+          value={$reviewSessionStore.selectedFrameRatePreset}
           on:change={onFrameRatePresetSelect}
         >
           {#each frameRatePresets as preset}
@@ -269,12 +263,8 @@
   {/if}
 
   <PointerStyleControls
-    {pointerSize}
-    {pointerIconSelection}
     {pointerIconOptions}
     {zipPointerImportMessage}
-    {onPointerSizeChange}
-    {onPointerIconSelect}
     {onZipPointerFileChange}
   />
 
