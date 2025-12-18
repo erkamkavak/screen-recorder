@@ -6,11 +6,12 @@
     canvasDimensions,
     generalLayoutState,
     lastRecording,
+    currentProject,
     recordingFPS,
     screenLayoutState,
     webcamLayoutState,
   } from "../lib/stores";
-  import type { PointerEventRecord, RecordingAsset } from "../lib/stores";
+  import type { PointerEventRecord, RecordingAsset, RecordingSegment } from "../lib/stores";
   import Review from "./review/Review.svelte";
   import cursorPackCursor from "../assets/cursors/cutecore-pink-cursor.png?url";
   import cursorPackPointer from "../assets/cursors/cutecore-pink-pointer.png?url";
@@ -32,12 +33,20 @@
   import { ZOOM_DEFAULT_DURATION, ZOOM_DEFAULT_SCALE } from "../lib/timeline/zoomDefaults";
   import { calculateScreenPlacement } from "../lib/canvas/layoutDrawers";
   import type { ScreenPlacement } from "../lib/canvas/layoutDrawers";
-  import { findZoomEventForTime } from "../lib/timeline/zoomEvents";
+  import {
+    applyPersistedReviewState,
+    buildPersistedReviewState,
+    buildPersistedReviewStateForContinuation,
+    getSegmentsEffectiveDurationSec,
+    type PersistedReviewState,
+  } from "../lib/review/reviewProjectState";
 
   let videoDuration = 0;
   let videoCurrentTime = 0;
   let isRenderingVideo = false;
   let renderProgress = 0;
+  let isSavingProject = false;
+  let projectSaved = false;
 
   let includePointerTrack = true;
   let includeWebcamTrack = true;
@@ -124,9 +133,48 @@
   ];
   let selectedFrameRatePreset: FrameRatePresetId = "fps-original";
   
-  let currentSnapshot = timelineStore.snapshot();
-  // Reactive snapshot so zoom/trim changes reflect in composited preview
-  $: ($timelineStore, currentSnapshot = timelineStore.snapshot());
+  let currentSnapshot = { segmentEvents: {} };
+  // Reactive snapshot so zoom changes reflect in composited preview
+  $: currentSnapshot = {
+    segmentEvents: $timelineStore.segmentEvents,
+  };
+
+  let hasRestoredReviewState = false;
+  $: if ($lastRecording?.reviewState && !hasRestoredReviewState) {
+    const state = $lastRecording.reviewState as PersistedReviewState;
+    try {
+      console.log("Restoring review state:", state);
+      applyPersistedReviewState({
+        state,
+        clamp,
+        timeline: {
+          loadSnapshot: timelineStore.loadSnapshot,
+        },
+        setIncludePointerTrack: (v) => (includePointerTrack = v),
+        setIncludeWebcamTrack: (v) => (includeWebcamTrack = v),
+        setIncludeAudioTrack: (v) => (includeAudioTrack = v),
+        setIncludeClickTrack: (v) => (includeClickTrack = v),
+        setPointerIndicatorSize: (v) => (pointerIndicatorSize = v),
+        setPointerIconSelection: (v) => (pointerIconSelection = v),
+        setRenderFormat: (v) => (renderFormat = v as RenderFormat),
+        setSelectedResolutionPreset: (v) => (selectedResolutionPreset = v as ResolutionPresetId),
+        setSelectedFrameRatePreset: (v) => (selectedFrameRatePreset = v as FrameRatePresetId),
+        setShowCaptions: (v) =>
+          transcriptionSettings.set({
+            ...$transcriptionSettings,
+            showCaptions: v,
+          }),
+      });
+      currentSnapshot = timelineStore.snapshot();
+      console.log("Current timeline snapshot:", currentSnapshot);
+    } finally {
+      hasRestoredReviewState = true;
+    }
+  }
+
+  $: if (!$lastRecording) {
+    hasRestoredReviewState = false;
+  }
 
   const updateVideoFrameMetrics = () => {
     if (!playerFrameEl) {
@@ -209,7 +257,23 @@
   $: pointerState = computePointerState(videoCurrentTime, pointerRecords);
 
   $: recordingDurationSeconds = $lastRecording ? Math.max(0, $lastRecording.duration / 1000) : 0;
-  $: timelineDuration = videoDuration > 0 ? videoDuration : recordingDurationSeconds;
+  $: segmentsEffectiveDuration = getSegmentsEffectiveDurationSec($lastRecording?.segments ?? []);
+  $: segmentsOriginalDuration = ($lastRecording?.segments ?? []).reduce(
+    (sum, seg) => sum + Math.max(0, seg.duration / 1000),
+    0
+  );
+  // $: timelineDuration =
+  //   ($lastRecording?.segments?.length ?? 0) > 1
+  //     ? segmentsEffectiveDuration
+  //     : videoDuration > 0
+  //       ? videoDuration
+  //       : recordingDurationSeconds;
+  $: timelineDuration =
+    ($lastRecording?.segments?.length ?? 0) > 0
+      ? segmentsOriginalDuration
+      : videoDuration > 0
+        ? videoDuration
+        : recordingDurationSeconds;
 
   const clamp = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value));
@@ -615,27 +679,191 @@
     if (duration <= 0) return;
 
     const timestampSeconds = clampToTimelineDuration(seconds ?? clickEvent.t / 1000);
-    const existingZoom = findZoomEventForTime($timelineStore.events, timestampSeconds);
-    if (existingZoom) {
-      timelineStore.selectEvent(existingZoom.id);
-      return;
+    const segs = $lastRecording?.segments ?? [];
+    if (segs.length) {
+      let acc = 0;
+      for (const seg of segs) {
+        const segDur = Math.max(0, seg.duration / 1000);
+        const within = timestampSeconds >= acc && timestampSeconds <= acc + segDur;
+        if (within) {
+          const segmentId = seg.id;
+          const localTime = Math.max(0, timestampSeconds - acc);
+          // Avoid duplicate zooms in the same segment
+          const existing = ($timelineStore.segmentEvents?.[segmentId] ?? []).find(
+            (e) => e.type === "zoom" && localTime >= e.startTime && localTime <= e.startTime + e.duration
+          );
+          if (existing) {
+            timelineStore.selectEvent({ segmentId, eventId: existing.id });
+            return;
+          }
+
+          const focusX = typeof clickEvent.x === "number" ? clickEvent.x : 0.5;
+          const focusY = typeof clickEvent.y === "number" ? clickEvent.y : 0.5;
+          const localStartTime = clamp(localTime - ZOOM_DEFAULT_DURATION / 2, 0, Math.max(0, segDur));
+
+          timelineStore.addZoom(segmentId, {
+            startTime: localStartTime,
+            duration: Math.min(ZOOM_DEFAULT_DURATION, Math.max(0.1, segDur - localStartTime)),
+            focusX,
+            focusY,
+            zoom: ZOOM_DEFAULT_SCALE,
+            label: "Click zoom",
+          });
+          return;
+        }
+        acc += segDur;
+      }
     }
 
-    const focusX = typeof clickEvent.x === "number" ? clickEvent.x : 0.5;
-    const focusY = typeof clickEvent.y === "number" ? clickEvent.y : 0.5;
-    const startTime = clampToTimelineDuration(timestampSeconds - ZOOM_DEFAULT_DURATION / 2);
-
-    timelineStore.addZoom({
-      startTime,
-      duration: ZOOM_DEFAULT_DURATION,
-      focusX,
-      focusY,
-      zoom: ZOOM_DEFAULT_SCALE,
-      label: "Click zoom",
-    });
+    // No segments: ignore (legacy path no longer supported for zoom authoring here)
   };
 
   const resetToRecorder = () => {
+    $appView = "recorder";
+  };
+
+  const handleSegmentTrimChange = (segmentId: string, edge: "start" | "end", valueMs: number) => {
+    if (!$lastRecording?.segments) return;
+    
+    const updatedSegments = $lastRecording.segments.map((seg) => {
+      if (seg.id !== segmentId) return seg;
+      
+      const maxTrim = seg.duration - (edge === "start" ? seg.trimEnd : seg.trimStart) - 100; // Keep at least 100ms
+      const clampedValue = Math.max(0, Math.min(valueMs, maxTrim));
+      
+      if (edge === "start") {
+        return { ...seg, trimStart: clampedValue };
+      } else {
+        return { ...seg, trimEnd: clampedValue };
+      }
+    });
+
+    // Recompute startOffsets
+    let offset = 0;
+    for (const seg of updatedSegments) {
+      seg.startOffset = offset;
+      offset += Math.max(0, seg.duration - seg.trimStart - seg.trimEnd);
+    }
+
+    lastRecording.update((rec) => rec ? { ...rec, segments: updatedSegments } : rec);
+    
+    // Mark project as unsaved when trims change
+    projectSaved = false;
+  };
+
+  const saveProject = async () => {
+    if (!$lastRecording || isSavingProject) return;
+    isSavingProject = true;
+    try {
+      const projectName = $lastRecording.projectId 
+        ? $currentProject?.name || `Recording ${new Date().toLocaleString()}`
+        : `Recording ${new Date().toLocaleString()}`;
+      
+      // Build segments from current recording if not already present
+      const segments = $lastRecording.segments || [{
+        id: crypto.randomUUID(),
+        assets: $lastRecording.assets,
+        events: $lastRecording.events,
+        startOffset: 0,
+        duration: $lastRecording.duration,
+        trimStart: 0,
+        trimEnd: 0,
+      }];
+      
+      const recordingWithSegments = {
+        ...$lastRecording,
+        segments,
+        reviewState: buildPersistedReviewState({
+          timeline: timelineStore.snapshot(),
+          includePointerTrack,
+          includeWebcamTrack,
+          includeAudioTrack,
+          includeClickTrack,
+          pointerIndicatorSize,
+          pointerIconSelection,
+          renderFormat,
+          selectedResolutionPreset,
+          selectedFrameRatePreset,
+          showCaptions: $transcriptionSettings.showCaptions,
+        }),
+      };
+      console.log("Saving project with timeline: ", timelineStore.snapshot());
+      
+      const result = await backendAPI.saveProject(
+        projectName,
+        recordingWithSegments,
+        $lastRecording.projectId
+      );
+      
+      if (result.success) {
+        projectSaved = true;
+        // Update lastRecording with project ID for future saves
+        lastRecording.update(rec => rec ? { ...rec, projectId: result.projectId, segments } : rec);
+        currentProject.set({
+          id: result.projectId,
+          name: projectName,
+          segments,
+          totalDuration: $lastRecording.duration,
+          fileName: $lastRecording.fileName,
+          previewPath: $lastRecording.previewPath,
+          reviewState: recordingWithSegments.reviewState,
+        });
+        console.log("Project saved:", result.projectId);
+      }
+    } catch (error) {
+      console.error("Failed to save project:", error);
+    } finally {
+      isSavingProject = false;
+    }
+  };
+
+  const continueRecording = () => {
+    if (!$lastRecording) return;
+
+    // Build segments from current recording
+    const existingSegments: RecordingSegment[] = $lastRecording.segments || [{
+      id: crypto.randomUUID(),
+      assets: $lastRecording.assets,
+      events: $lastRecording.events,
+      startOffset: 0,
+      duration: $lastRecording.duration,
+      trimStart: 0,
+      trimEnd: 0,
+    }];
+
+    const trimmedSegments = existingSegments;
+    const trimmedTotalDurationMs = trimmedSegments.reduce(
+      (sum, seg) => sum + Math.max(0, seg.duration - seg.trimStart - seg.trimEnd),
+      0
+    );
+
+    const snapshot = timelineStore.snapshot();
+    const reviewState = buildPersistedReviewStateForContinuation({
+      timeline: snapshot,
+      includePointerTrack,
+      includeWebcamTrack,
+      includeAudioTrack,
+      includeClickTrack,
+      pointerIndicatorSize,
+      pointerIconSelection,
+      renderFormat,
+      selectedResolutionPreset,
+      selectedFrameRatePreset,
+      showCaptions: $transcriptionSettings.showCaptions,
+    });
+    
+    // Store the current project state for continuation
+    currentProject.set({
+      id: $lastRecording.projectId,
+      name: $currentProject?.name || `Recording ${new Date().toLocaleString()}`,
+      segments: trimmedSegments,
+      totalDuration: trimmedTotalDurationMs,
+      fileName: $lastRecording.fileName,
+      previewPath: $lastRecording.previewPath,
+      reviewState,
+    });
+    
+    // Go back to recorder - the recording controller will handle continuation
     $appView = "recorder";
   };
 
@@ -737,7 +965,8 @@
             onProgress: (current, total) => {
               renderProgress = Math.round((current / total) * 100);
             },
-          }
+          },
+          $lastRecording.segments
         );
       } catch (error) {
         if (error instanceof Error && error.message === "Render cancelled") {
@@ -830,4 +1059,10 @@
   frameRatePresets={frameRatePresets}
   selectedFrameRatePreset={selectedFrameRatePreset}
   onFrameRatePresetChange={handleFrameRatePresetChange}
+  onSaveProject={saveProject}
+  {isSavingProject}
+  {projectSaved}
+  onContinueRecording={continueRecording}
+  canContinueRecording={true}
+  onSegmentTrimChange={handleSegmentTrimChange}
 />

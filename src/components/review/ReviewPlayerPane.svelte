@@ -1,7 +1,8 @@
 <script lang="ts">
   import CompositePlayer from "./CompositePlayer.svelte";
+  import ReviewHeaderActions from "./ReviewHeaderActions.svelte";
   import Timeline from "../Timeline.svelte";
-  import type { PointerEventRecord } from "../../lib/stores";
+  import type { PointerEventRecord, RecordingSegment } from "../../lib/stores";
   import type {
     Background,
     CanvasSize,
@@ -43,10 +44,19 @@
   export let timelineDuration = 0;
   export let sortedClickEvents: PointerEventRecord[] = [];
   export let addZoomForClick: (event: PointerEventRecord, seconds?: number) => void;
+  export let segments: RecordingSegment[] = [];
+  export let onSegmentTrimChange: ((segmentId: string, edge: "start" | "end", valueMs: number) => void) | null = null;
 
   export let playerFrameEl: HTMLDivElement | null = null;
 
   export let previewWidthPx: number;
+
+  export let onSaveProject: () => void;
+  export let isSavingProject: boolean = false;
+  export let projectSaved: boolean = false;
+
+  export let onContinueRecording: () => void;
+  export let canContinueRecording: boolean = true;
 </script>
 
 <section
@@ -59,6 +69,13 @@
         <h2>Review</h2>
         <p>Use the timeline to scrub. The screen asset plays back directly with a live pointer overlay.</p>
       </div>
+      <ReviewHeaderActions
+        {onSaveProject}
+        {isSavingProject}
+        {projectSaved}
+        {onContinueRecording}
+        {canContinueRecording}
+      />
     </header>
 
     <div class="player-frame narrow" bind:this={playerFrameEl}>
@@ -76,6 +93,7 @@
         showMouse={includePointerTrack}
         showClicks={includeClickTrack}
         includeAudio={includeAudioTrack}
+        {segments}
         {transcript}
         {showCaptions}
         {pointerRecords}
@@ -94,6 +112,8 @@
       currentTime={currentTime}
       clickEvents={sortedClickEvents}
       onAddZoomForClick={addZoomForClick}
+      {segments}
+      {onSegmentTrimChange}
     />
   </article>
 </section>
@@ -119,7 +139,7 @@
 
   .panel-header {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 1rem;
   }
@@ -161,5 +181,9 @@
 
   @media (max-width: 640px) {
     .playback-card { padding: 1rem; }
+    .panel-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
   }
 </style>

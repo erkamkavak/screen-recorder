@@ -17,33 +17,40 @@ export interface TimelineZoomEvent {
 export type TimelineEvent = TimelineZoomEvent;
 
 export interface TimelineSnapshot {
-  events: TimelineEvent[];
-  trimStart: number;
-  trimEnd: number | null;
+  segmentEvents: Record<string, TimelineEvent[]>;
+  events?: TimelineEvent[];
+  trimStart?: number;
+  trimEnd?: number | null;
 }
 
 export interface TimelineState extends TimelineSnapshot {
-  selectedEventId: string | null;
+  selectedEvent: { segmentId: string; eventId: string } | null;
   history: TimelineSnapshot[];
   historyIndex: number;
 }
 
 const cloneEvents = (events: TimelineEvent[]) => events.map((event) => ({ ...event }));
 
+const cloneSegmentEvents = (segmentEvents: Record<string, TimelineEvent[]>): Record<string, TimelineEvent[]> => {
+  const next: Record<string, TimelineEvent[]> = {};
+  for (const [segmentId, events] of Object.entries(segmentEvents ?? {})) {
+    next[segmentId] = cloneEvents(events ?? []);
+  }
+  return next;
+};
+
 const cloneSnapshot = (snapshot: TimelineSnapshot): TimelineSnapshot => ({
-  events: cloneEvents(snapshot.events),
+  segmentEvents: cloneSegmentEvents(snapshot.segmentEvents ?? {}),
+  events: snapshot.events ? cloneEvents(snapshot.events) : undefined,
   trimStart: snapshot.trimStart,
   trimEnd: snapshot.trimEnd,
 });
 
 const initialSnapshot = (): TimelineSnapshot => ({
-  events: [],
-  trimStart: 0,
-  trimEnd: null,
+  segmentEvents: {},
 });
 
-const sortEvents = (events: TimelineEvent[]) =>
-  [...events].sort((a, b) => a.startTime - b.startTime);
+const sortEvents = (events: TimelineEvent[]) => [...events].sort((a, b) => a.startTime - b.startTime);
 
 const clampDuration = (duration: number): number => Math.max(0.1, duration);
 
@@ -51,7 +58,7 @@ const createTimelineStore = () => {
   const initial = initialSnapshot();
   const { subscribe, set, update } = writable<TimelineState>({
     ...cloneSnapshot(initial),
-    selectedEventId: null,
+    selectedEvent: null,
     history: [cloneSnapshot(initial)],
     historyIndex: 0,
   });
@@ -59,43 +66,65 @@ const createTimelineStore = () => {
   const commit = (
     state: TimelineState,
     snapshot: TimelineSnapshot,
-    selectedEventId: string | null = state.selectedEventId
+    selectedEvent: TimelineState["selectedEvent"] = state.selectedEvent
   ): TimelineState => {
     const history = state.history.slice(0, state.historyIndex + 1);
     history.push(cloneSnapshot(snapshot));
     return {
       ...state,
-      events: cloneEvents(snapshot.events),
-      trimStart: snapshot.trimStart,
-      trimEnd: snapshot.trimEnd,
-      selectedEventId,
+      segmentEvents: cloneSegmentEvents(snapshot.segmentEvents ?? {}),
+      selectedEvent,
       history,
       historyIndex: history.length - 1,
+    };
+  };
+
+  const normalizeSnapshot = (snapshot: TimelineSnapshot): TimelineSnapshot => {
+    // Backward compat: old snapshots had flat `events`.
+    if (snapshot.segmentEvents && Object.keys(snapshot.segmentEvents).length) {
+      return {
+        segmentEvents: cloneSegmentEvents(snapshot.segmentEvents),
+      };
+    }
+    const legacyEvents = sortEvents((snapshot.events ?? []) as TimelineEvent[]);
+    return {
+      segmentEvents: legacyEvents.length ? { __legacy: legacyEvents } : {},
+      events: snapshot.events,
+      trimStart: snapshot.trimStart,
+      trimEnd: snapshot.trimEnd,
     };
   };
 
   return {
     subscribe,
 
-    addZoom: (zoom: Omit<TimelineZoomEvent, "id" | "type">) => {
+    addZoom: (segmentId: string, zoom: Omit<TimelineZoomEvent, "id" | "type">) => {
       update((state) => {
         const id = `zoom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const nextSegmentEvents = cloneSegmentEvents(state.segmentEvents ?? {});
+        const current = nextSegmentEvents[segmentId] ?? [];
+        nextSegmentEvents[segmentId] = sortEvents([
+          ...current,
+          { ...zoom, id, type: "zoom", duration: clampDuration(zoom.duration) },
+        ]);
+
         const snapshot: TimelineSnapshot = {
-          events: sortEvents([
-            ...state.events,
-            { ...zoom, id, type: "zoom", duration: clampDuration(zoom.duration) },
-          ]),
-          trimStart: state.trimStart,
-          trimEnd: state.trimEnd,
+          segmentEvents: nextSegmentEvents,
         };
-        return commit(state, snapshot, id);
+        return commit(state, snapshot, { segmentId, eventId: id });
       });
     },
 
-    updateZoom: (eventId: string, patch: Partial<Omit<TimelineZoomEvent, "id" | "type">>) => {
+    updateZoom: (
+      segmentId: string,
+      eventId: string,
+      patch: Partial<Omit<TimelineZoomEvent, "id" | "type">>
+    ) => {
       update((state) => {
-        const events = sortEvents(
-          state.events.map((event) =>
+        const nextSegmentEvents = cloneSegmentEvents(state.segmentEvents ?? {});
+        const current = nextSegmentEvents[segmentId] ?? [];
+        nextSegmentEvents[segmentId] = sortEvents(
+          current.map((event) =>
             event.id === eventId
               ? {
                   ...event,
@@ -111,57 +140,35 @@ const createTimelineStore = () => {
               : event
           )
         );
+
         const snapshot: TimelineSnapshot = {
-          events,
-          trimStart: state.trimStart,
-          trimEnd: state.trimEnd,
+          segmentEvents: nextSegmentEvents,
         };
-        return commit(state, snapshot, state.selectedEventId);
+        return commit(state, snapshot, state.selectedEvent);
       });
     },
 
-    deleteEvent: (eventId: string) => {
+    deleteEvent: (segmentId: string, eventId: string) => {
       update((state) => {
-        const events = sortEvents(state.events.filter((event) => event.id !== eventId));
+        const nextSegmentEvents = cloneSegmentEvents(state.segmentEvents ?? {});
+        const current = nextSegmentEvents[segmentId] ?? [];
+        nextSegmentEvents[segmentId] = sortEvents(current.filter((event) => event.id !== eventId));
         const snapshot: TimelineSnapshot = {
-          events,
-          trimStart: state.trimStart,
-          trimEnd: state.trimEnd,
+          segmentEvents: nextSegmentEvents,
         };
-        const selected = state.selectedEventId === eventId ? null : state.selectedEventId;
+        const selected =
+          state.selectedEvent?.segmentId === segmentId && state.selectedEvent?.eventId === eventId
+            ? null
+            : state.selectedEvent;
         return commit(state, snapshot, selected);
       });
     },
 
-    selectEvent: (eventId: string | null) => {
+    selectEvent: (selected: { segmentId: string; eventId: string } | null) => {
       update((state) => ({
         ...state,
-        selectedEventId: eventId,
+        selectedEvent: selected,
       }));
-    },
-
-    setTrim: (edge: "start" | "end", value: number, mediaDuration: number) => {
-      update((state) => {
-        const clamped = Math.max(0, Math.min(value, mediaDuration));
-        const currentEnd = state.trimEnd ?? mediaDuration;
-        const epsilon = 0.01;
-
-        let trimStart = state.trimStart;
-        let trimEnd = currentEnd;
-
-        if (edge === "start") {
-          trimStart = Math.min(clamped, Math.max(0, trimEnd - epsilon));
-        } else {
-          trimEnd = Math.max(clamped, Math.min(mediaDuration, trimStart + epsilon));
-        }
-
-        const snapshot: TimelineSnapshot = {
-          events: sortEvents(state.events),
-          trimStart,
-          trimEnd,
-        };
-        return commit(state, snapshot, state.selectedEventId);
-      });
     },
 
     undo: () => {
@@ -171,11 +178,9 @@ const createTimelineStore = () => {
         const snapshot = state.history[nextIndex];
         return {
           ...state,
-          events: cloneEvents(snapshot.events),
-          trimStart: snapshot.trimStart,
-          trimEnd: snapshot.trimEnd,
+          segmentEvents: cloneSegmentEvents(normalizeSnapshot(snapshot).segmentEvents),
           historyIndex: nextIndex,
-          selectedEventId: null,
+          selectedEvent: null,
         };
       });
     },
@@ -187,11 +192,9 @@ const createTimelineStore = () => {
         const snapshot = state.history[nextIndex];
         return {
           ...state,
-          events: cloneEvents(snapshot.events),
-          trimStart: snapshot.trimStart,
-          trimEnd: snapshot.trimEnd,
+          segmentEvents: cloneSegmentEvents(normalizeSnapshot(snapshot).segmentEvents),
           historyIndex: nextIndex,
-          selectedEventId: null,
+          selectedEvent: null,
         };
       });
     },
@@ -200,7 +203,7 @@ const createTimelineStore = () => {
       const initialSnap = initialSnapshot();
       set({
         ...initialSnap,
-        selectedEventId: null,
+        selectedEvent: null,
         history: [initialSnap],
         historyIndex: 0,
       });
@@ -209,14 +212,26 @@ const createTimelineStore = () => {
     snapshot: () => {
       let current: TimelineSnapshot = cloneSnapshot(initialSnapshot());
       update((state) => {
-        current = cloneSnapshot({
-          events: state.events,
-          trimStart: state.trimStart,
-          trimEnd: state.trimEnd,
-        });
+        current = cloneSnapshot({ segmentEvents: state.segmentEvents ?? {} });
         return state;
       });
       return current;
+    },
+
+    loadSnapshot: (snapshot: TimelineSnapshot) => {
+      const normalized = normalizeSnapshot(snapshot);
+      const snap = cloneSnapshot({
+        segmentEvents: cloneSegmentEvents(normalized.segmentEvents ?? {}),
+        events: normalized.events,
+        trimStart: normalized.trimStart,
+        trimEnd: normalized.trimEnd,
+      });
+      set({
+        ...snap,
+        selectedEvent: null,
+        history: [cloneSnapshot(snap)],
+        historyIndex: 0,
+      });
     },
   };
 };

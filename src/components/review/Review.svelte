@@ -79,6 +79,15 @@
   export let addZoomForClick: (event: PointerEventRecord, seconds?: number) => void;
   export let timelineDuration = 0;
 
+  export let onSaveProject: () => void = () => {};
+  export let isSavingProject: boolean = false;
+  export let projectSaved: boolean = false;
+
+  export let onContinueRecording: () => void = () => {};
+  export let canContinueRecording: boolean = true;
+
+  export let onSegmentTrimChange: ((segmentId: string, edge: "start" | "end", valueMs: number) => void) | null = null;
+
   const minPreviewWidth = 1080;
   const minAsideWidth = 320;
   const resizeGutter = 16;
@@ -207,6 +216,13 @@
       {addZoomForClick}
       bind:playerFrameEl
       {previewWidthPx}
+      segments={lastRecording?.segments ?? []}
+      {onSegmentTrimChange}
+      {onSaveProject}
+      {isSavingProject}
+      {projectSaved}
+      {onContinueRecording}
+      {canContinueRecording}
     />
     <div
       class={`review-resize-handle ${isResizing ? "is-resizing" : ""}`}

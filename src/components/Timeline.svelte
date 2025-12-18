@@ -1,21 +1,24 @@
 <script lang="ts">
   import { timelineStore } from "../lib/stores/timeline";
-  import type { PointerEventRecord } from "../lib/stores";
+  import type { PointerEventRecord, RecordingSegment } from "../lib/stores";
   import { ZOOM_DEFAULT_DURATION, ZOOM_DEFAULT_SCALE } from "../lib/timeline/zoomDefaults";
-  import { findZoomEventForTime } from "../lib/timeline/zoomEvents";
 
   export let duration = 0;
   export let currentTime = 0;
   export let clickEvents: PointerEventRecord[] = [];
   export let onAddZoomForClick: ((clickEvent: PointerEventRecord, seconds?: number) => void) | null = null;
+  export let segments: RecordingSegment[] = [];
+  export let onSegmentTrimChange: ((segmentId: string, edge: "start" | "end", valueMs: number) => void) | null = null;
 
   let zoomDraft = false;
   let trackEl: HTMLDivElement | null = null;
   
   // Drag state
   interface DragState {
-    type: "trim" | "event-move" | "event-resize-start" | "event-resize-end";
-    id?: string; // event id for event ops
+    type: "event-move" | "event-resize-start" | "event-resize-end" | "segment-trim";
+    id?: string; // event id for event ops, or segment id for segment-trim
+    segmentId?: string; // for event ops
+    edge?: "start" | "end"; // for segment-trim
     startX: number;
     initialTime: number;
     initialDuration?: number;
@@ -55,17 +58,134 @@
 
   $: canUndo = $timelineStore.historyIndex > 0;
   $: canRedo = $timelineStore.historyIndex < $timelineStore.history.length - 1;
-  $: trimStart = $timelineStore.trimStart;
-  $: trimEnd = $timelineStore.trimEnd ?? duration;
+
+  // Helper for direct access to store events for a segment
+  $: getEventsForSegment = (segmentId: string) => $timelineStore.segmentEvents?.[segmentId] ?? [];
   $: timeMarkers = duration > 0
     ? Array.from({ length: Math.ceil(duration / 5) + 1 }, (_, index) => index * 5)
     : [];
   type ClickMarker = { event: PointerEventRecord; seconds: number };
   $: orderedClickEvents = [...clickEvents].sort((a, b) => a.t - b.t);
-  $: clickMarkers = orderedClickEvents.map((event) => ({
-    event,
-    seconds: clampTime(event.t / 1000),
-  }));
+  
+  // Calculate click markers from segments if available, otherwise from root events
+  $: clickMarkers = (() => {
+    if (segmentBoundaries.length > 0) {
+      return segmentBoundaries.flatMap((b) => {
+        const seg = segments.find((s) => s.id === b.id);
+        if (!seg) return [];
+        return seg.events
+          .filter((e) => e.kind === "click")
+          .map((event) => ({
+            event: event as PointerEventRecord,
+            seconds: b.originalStartSec + event.t / 1000,
+          }));
+      });
+    }
+    return orderedClickEvents.map((event) => ({
+      event,
+      seconds: clampTime(event.t / 1000),
+    }));
+  })();
+
+  // Calculate segment boundaries for display (includes trim info)
+  type SegmentBoundary = {
+    id: string;
+    originalStartSec: number; // global timeline start (original/recorded time)
+    originalEndSec: number; // global timeline end (original/recorded time)
+    effectiveStartSec: number; // global timeline start (playable/effective time)
+    effectiveEndSec: number; // global timeline end (playable/effective time)
+    effectiveDurationSec: number;
+    originalDurationSec: number;
+    trimStartSec: number; // segment-local trim start in seconds
+    trimEndSec: number; // segment-local trim end in seconds
+    index: number;
+  };
+  $: segmentBoundaries = (() => {
+    if (!segments || segments.length === 0) return [];
+    const boundaries: SegmentBoundary[] = [];
+    let accumulatedOriginal = 0;
+    let accumulatedEffective = 0;
+    for (let i = 0; i < segments.length; i++) {
+      const seg = segments[i];
+      const originalDurationSec = seg.duration / 1000;
+      const trimStartSec = seg.trimStart / 1000;
+      const trimEndSec = seg.trimEnd / 1000;
+      const effectiveDurationSec = Math.max(0, originalDurationSec - trimStartSec - trimEndSec);
+      boundaries.push({
+        id: seg.id,
+        originalStartSec: accumulatedOriginal,
+        originalEndSec: accumulatedOriginal + originalDurationSec,
+        effectiveStartSec: accumulatedEffective,
+        effectiveEndSec: accumulatedEffective + effectiveDurationSec,
+        effectiveDurationSec,
+        originalDurationSec,
+        trimStartSec,
+        trimEndSec,
+        index: i,
+      });
+      accumulatedOriginal += originalDurationSec;
+      accumulatedEffective += effectiveDurationSec;
+    }
+    return boundaries;
+  })();
+
+  $: timelineEvents = segmentBoundaries.flatMap((b) =>
+    ($timelineStore.segmentEvents?.[b.id] ?? []).map((event) => ({ segmentId: b.id, event }))
+  );
+
+  const effectiveToDisplayTime = (effectiveSeconds: number) => {
+    const t = clampTime(effectiveSeconds);
+    if (!segmentBoundaries.length) return t;
+    for (const b of segmentBoundaries) {
+      if (t >= b.effectiveStartSec && t <= b.effectiveEndSec) {
+        const delta = t - b.effectiveStartSec;
+        return clampTime(b.originalStartSec + b.trimStartSec + delta);
+      }
+    }
+    // If we're past last effective end, clamp to end of last kept region
+    const last = segmentBoundaries[segmentBoundaries.length - 1];
+    return clampTime(last.originalEndSec - last.trimEndSec);
+  };
+
+  // Optimistic segment trim state for smooth dragging
+  let optimisticSegmentTrim: { id: string; trimStartSec: number; trimEndSec: number } | null = null;
+
+  const getSegmentTrimDisplay = (boundary: SegmentBoundary) => {
+    if (optimisticSegmentTrim && optimisticSegmentTrim.id === boundary.id) {
+      return {
+        trimStartSec: optimisticSegmentTrim.trimStartSec,
+        trimEndSec: optimisticSegmentTrim.trimEndSec,
+      };
+    }
+    return {
+      trimStartSec: boundary.trimStartSec,
+      trimEndSec: boundary.trimEndSec,
+    };
+  };
+
+  const handleSegmentTrimPointerDown = (event: PointerEvent, segmentId: string, edge: "start" | "end") => {
+    event.stopPropagation();
+    event.preventDefault();
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+
+    const boundary = segmentBoundaries.find((b) => b.id === segmentId);
+    if (!boundary) return;
+
+    dragState = {
+      type: "segment-trim",
+      id: segmentId,
+      edge,
+      startX: event.clientX,
+      initialTime: edge === "start" ? boundary.trimStartSec : boundary.trimEndSec,
+      initialDuration: boundary.originalDurationSec,
+    };
+
+    optimisticSegmentTrim = {
+      id: segmentId,
+      trimStartSec: boundary.trimStartSec,
+      trimEndSec: boundary.trimEndSec,
+    };
+  };
 
   const focusForTime = (seconds: number) => {
     const events = pointerSeries(clickMarkers.map((marker) => marker.event));
@@ -107,9 +227,16 @@
     const clampedDuration = Math.min(ZOOM_DEFAULT_DURATION, duration || ZOOM_DEFAULT_DURATION);
     const startTime = clampTime(seconds - clampedDuration / 2);
 
-    timelineStore.addZoom({
-      startTime,
-      duration: Math.max(0.1, clampedDuration),
+    const boundary = segmentBoundaries.find(
+      (b) => startTime >= b.originalStartSec && startTime <= b.originalEndSec
+    );
+    if (!boundary) return;
+
+    const localStartTime = Math.max(0, startTime - boundary.originalStartSec);
+    const maxDuration = Math.max(0.1, boundary.originalDurationSec - localStartTime);
+    timelineStore.addZoom(boundary.id, {
+      startTime: localStartTime,
+      duration: Math.max(0.1, Math.min(clampedDuration, maxDuration)),
       focusX: focus.x,
       focusY: focus.y,
       zoom: ZOOM_DEFAULT_SCALE,
@@ -121,22 +248,12 @@
     if (!zoomDraft) return;
 
     const seconds =
-      event instanceof MouseEvent ? screenXToTime(event.clientX) : clampTime(currentTime);
+      event instanceof MouseEvent
+        ? screenXToTime(event.clientX)
+        : clampTime(effectiveToDisplayTime(currentTime));
 
     addZoomAt(seconds);
     zoomDraft = false;
-  };
-
-  const handleTrimPointerDown = (event: PointerEvent, edge: "start" | "end") => {
-    event.stopPropagation();
-    event.preventDefault();
-    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
-    dragState = {
-      type: "trim",
-      id: edge, // 'start' or 'end'
-      startX: event.clientX,
-      initialTime: edge === "start" ? trimStart : trimEnd,
-    };
   };
 
   const handleEventPointerDown = (event: PointerEvent, eventId: string, type: "event-move" | "event-resize-start" | "event-resize-end") => {
@@ -146,10 +263,16 @@
       event.preventDefault();
     }
     
-    const targetEvent = $timelineStore.events.find(e => e.id === eventId);
+    const segmentId = segmentBoundaries.find(
+      (b) => getEventsForSegment(b.id).some((e) => e.id === eventId)
+    )?.id;
+    if (!segmentId) return;
+    const targetEvent = getEventsForSegment(segmentId).find((e) => e.id === eventId);
     if (!targetEvent) return;
 
-    const alreadySelected = $timelineStore.selectedEventId === eventId;
+    const alreadySelected =
+      $timelineStore.selectedEvent?.segmentId === segmentId &&
+      $timelineStore.selectedEvent?.eventId === eventId;
     suppressedClickEventId = alreadySelected ? null : eventId;
     eventDragOccurred = false;
 
@@ -158,6 +281,7 @@
     dragState = {
       type,
       id: eventId,
+      segmentId,
       startX: event.clientX,
       initialTime: targetEvent.startTime,
       initialDuration: targetEvent.duration
@@ -171,41 +295,74 @@
     };
 
     // If resizing or moving, select the event
-    timelineStore.selectEvent(eventId);
+    timelineStore.selectEvent({ segmentId, eventId });
   };
 
   const handlePointerDrag = (event: PointerEvent) => {
     if (!dragState || duration <= 0) return;
     
-    if (dragState.type !== "trim") {
+    if (dragState.type !== "segment-trim") {
       eventDragOccurred = true;
     }
 
-    // Handle Trim Dragging
-    if (dragState.type === "trim") {
-        const seconds = screenXToTime(event.clientX);
-        timelineStore.setTrim(dragState.id as "start" | "end", seconds, duration);
-        return;
+    // Handle Segment Trim Dragging
+    if (dragState.type === "segment-trim" && dragState.id && optimisticSegmentTrim) {
+      const deltaT = pxToTimeDelta(event.clientX - dragState.startX);
+      const originalDuration = dragState.initialDuration || 0;
+      const edge = dragState.edge as "start" | "end";
+
+      if (edge === "start") {
+        // Adjust trimStart: more trim = less playable content from start
+        const newTrimStart = Math.max(
+          0,
+          Math.min(
+            originalDuration - optimisticSegmentTrim.trimEndSec - 0.1,
+            dragState.initialTime + deltaT
+          )
+        );
+        optimisticSegmentTrim = { ...optimisticSegmentTrim, trimStartSec: newTrimStart };
+      } else {
+        // Adjust trimEnd: more trim = less playable content from end
+        const newTrimEnd = Math.max(
+          0,
+          Math.min(
+            originalDuration - optimisticSegmentTrim.trimStartSec - 0.1,
+            dragState.initialTime - deltaT
+          )
+        );
+        optimisticSegmentTrim = { ...optimisticSegmentTrim, trimEndSec: newTrimEnd };
+      }
+      return;
     }
 
     // Handle Event Dragging/Resizing
     if (dragState.id && optimisticEvent) {
-        const deltaT = pxToTimeDelta(event.clientX - dragState.startX);
-        
-        if (dragState.type === 'event-move') {
-            const newStart = Math.max(0, Math.min(duration - optimisticEvent.duration, dragState.initialTime + deltaT));
-            optimisticEvent = { ...optimisticEvent, startTime: newStart };
-        } else if (dragState.type === 'event-resize-start') {
-            // Changing start time affects duration (end time stays fixed)
-            const originalEnd = dragState.initialTime + (dragState.initialDuration || 0);
-            const newStart = Math.max(0, Math.min(originalEnd - 0.1, dragState.initialTime + deltaT));
-            const newDuration = originalEnd - newStart;
-            optimisticEvent = { ...optimisticEvent, startTime: newStart, duration: newDuration };
-        } else if (dragState.type === 'event-resize-end') {
-            // Changing duration only
-            const newDuration = Math.max(0.1, Math.min(duration - dragState.initialTime, (dragState.initialDuration || 0) + deltaT));
-            optimisticEvent = { ...optimisticEvent, duration: newDuration };
-        }
+      const deltaT = pxToTimeDelta(event.clientX - dragState.startX);
+
+      const segId = dragState.segmentId ?? $timelineStore.selectedEvent?.segmentId;
+      const segBoundary = segId ? segmentBoundaries.find((b) => b.id === segId) : null;
+      const segDuration = segBoundary?.originalDurationSec ?? duration;
+
+      if (dragState.type === 'event-move') {
+        const newStart = Math.max(
+          0,
+          Math.min(segDuration - optimisticEvent.duration, dragState.initialTime + deltaT)
+        );
+        optimisticEvent = { ...optimisticEvent, startTime: newStart };
+      } else if (dragState.type === 'event-resize-start') {
+        // Changing start time affects duration (end time stays fixed)
+        const originalEnd = dragState.initialTime + (dragState.initialDuration || 0);
+        const newStart = Math.max(0, Math.min(originalEnd - 0.1, dragState.initialTime + deltaT));
+        const newDuration = originalEnd - newStart;
+        optimisticEvent = { ...optimisticEvent, startTime: newStart, duration: Math.min(newDuration, segDuration - newStart) };
+      } else if (dragState.type === 'event-resize-end') {
+        // Changing duration only
+        const newDuration = Math.max(
+          0.1,
+          Math.min(segDuration - dragState.initialTime, (dragState.initialDuration || 0) + deltaT)
+        );
+        optimisticEvent = { ...optimisticEvent, duration: newDuration };
+      }
     }
   };
 
@@ -214,21 +371,45 @@
     
     // Commit changes if we were editing an event
     if (dragState.type.startsWith('event-') && optimisticEvent) {
-        timelineStore.updateZoom(optimisticEvent.id, {
-            startTime: optimisticEvent.startTime,
-            duration: optimisticEvent.duration
+      const selected = $timelineStore.selectedEvent;
+      if (selected && selected.eventId === optimisticEvent.id) {
+        timelineStore.updateZoom(selected.segmentId, optimisticEvent.id, {
+          startTime: optimisticEvent.startTime,
+          duration: optimisticEvent.duration,
         });
+      }
+    }
+
+    // Commit segment trim changes
+    if (dragState.type === "segment-trim" && dragState.id && optimisticSegmentTrim && onSegmentTrimChange) {
+        const edge = dragState.edge as "start" | "end";
+        const valueMs = edge === "start"
+            ? optimisticSegmentTrim.trimStartSec * 1000
+            : optimisticSegmentTrim.trimEndSec * 1000;
+        onSegmentTrimChange(dragState.id, edge, valueMs);
     }
 
     dragState = null;
     optimisticEvent = null;
+    optimisticSegmentTrim = null;
   };
 
   const handleClickMarker = (index: number, marker: ClickMarker) => {
     const seconds = marker.seconds;
-    const existingZoom = findZoomEventForTime($timelineStore.events, seconds);
+    const existingZoom = segmentBoundaries
+      .flatMap((b) =>
+        getEventsForSegment(b.id).map((e) => ({ segmentId: b.id, boundary: b, event: e }))
+      )
+      .find((item) => {
+        const boundary = item.boundary;
+        const zoomEvent = item.event;
+        if (zoomEvent.type !== "zoom") return false;
+        const start = boundary.originalStartSec + zoomEvent.startTime;
+        const end = start + zoomEvent.duration;
+        return seconds >= start && seconds <= end;
+      });
     if (existingZoom) {
-      timelineStore.selectEvent(existingZoom.id);
+      timelineStore.selectEvent({ segmentId: existingZoom.segmentId, eventId: existingZoom.event.id });
       return;
     }
     selectedClickIndex = index;
@@ -249,30 +430,44 @@
             return;
         }
         suppressedClickEventId = null;
-        timelineStore.selectEvent($timelineStore.selectedEventId === eventId ? null : eventId);
+        const segmentId = segmentBoundaries.find((b) => getEventsForSegment(b.id).some((e) => e.id === eventId))?.id;
+        if (!segmentId) return;
+        const isSelected =
+          $timelineStore.selectedEvent?.segmentId === segmentId &&
+          $timelineStore.selectedEvent?.eventId === eventId;
+        timelineStore.selectEvent(isSelected ? null : { segmentId, eventId });
     }
   };
 
   const handleEventKeydown = (eventId: string) => (event: KeyboardEvent) => {
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
-      timelineStore.selectEvent($timelineStore.selectedEventId === eventId ? null : eventId);
+      const segmentId = segmentBoundaries.find((b) => getEventsForSegment(b.id).some((e) => e.id === eventId))?.id;
+      if (!segmentId) return;
+      const isSelected =
+        $timelineStore.selectedEvent?.segmentId === segmentId &&
+        $timelineStore.selectedEvent?.eventId === eventId;
+      timelineStore.selectEvent(isSelected ? null : { segmentId, eventId });
     }
   };
 
   const deleteTimelineEvent = (eventId: string, event: MouseEvent) => {
     event.stopPropagation();
-    timelineStore.deleteEvent(eventId);
+    const segmentId = segmentBoundaries.find((b) => getEventsForSegment(b.id).some((e) => e.id === eventId))?.id;
+    if (!segmentId) return;
+    timelineStore.deleteEvent(segmentId, eventId);
+  };
+
+  const deleteSelectedEvent = () => {
+    const selected = $timelineStore.selectedEvent;
+    if (!selected) return;
+    timelineStore.deleteEvent(selected.segmentId, selected.eventId);
   };
 
   const resetTimeline = () => {
     if (confirm("Reset timeline edits?")) {
       timelineStore.reset();
     }
-  };
-
-  const triggerTrimAtCurrent = (edge: "start" | "end") => {
-    timelineStore.setTrim(edge, currentTime, duration);
   };
 
   // Helper to get display props for an event (store state vs optimistic drag state)
@@ -303,29 +498,11 @@
       {zoomDraft ? "Pick a time" : "Add Zoom"}
     </button>
 
-    <div class="toolbar-divider"></div>
-
-    <button class="toolbar-btn icon" title="Trim start to current time" on:click={() => triggerTrimAtCurrent("start")}>
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M4 4h4v16H4z" />
-        <path d="M8 12h12" />
-      </svg>
-    </button>
-
-    <button class="toolbar-btn icon" title="Trim end to current time" on:click={() => triggerTrimAtCurrent("end")}>
-      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M16 4h4v16h-4z" />
-        <path d="M4 12h12" />
-      </svg>
-    </button>
-
-    <div class="toolbar-divider"></div>
-
     <button
       class="toolbar-btn icon danger-hover"
       title="Delete selected event"
-      disabled={!$timelineStore.selectedEventId}
-      on:click={() => $timelineStore.selectedEventId && timelineStore.deleteEvent($timelineStore.selectedEventId)}
+      disabled={!$timelineStore.selectedEvent}
+      on:click={deleteSelectedEvent}
     >
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
         <polyline points="3 6 5 6 21 6" />
@@ -384,29 +561,76 @@
       {/each}
     </div>
 
-    <div
-      class="trim-range"
-      style={`left: ${getPositionPercent(trimStart)}%; width: ${Math.max(0, getPositionPercent(trimEnd) - getPositionPercent(trimStart))}%`}
-    ></div>
+    {#if segmentBoundaries.length >= 1}
+      <div class="segment-trims-layer">
+        {#each segmentBoundaries as boundary, i}
+          {@const trimDisplay = getSegmentTrimDisplay(boundary)}
+          {@const segWidthPercent = (Math.max(0.01, boundary.originalDurationSec) / duration) * 100}
+          {@const segLeftPercent = getPositionPercent(boundary.originalStartSec)}
+          {@const keptLeftSec = boundary.originalStartSec + trimDisplay.trimStartSec}
+          {@const keptRightSec = boundary.originalEndSec - trimDisplay.trimEndSec}
+          {@const keptLeftPercent = getPositionPercent(keptLeftSec)}
+          {@const keptRightPercent = getPositionPercent(keptRightSec)}
+          {@const keptWidthPercent = Math.max(0, keptRightPercent - keptLeftPercent)}
+          {@const hasTrim = trimDisplay.trimStartSec > 0.01 || trimDisplay.trimEndSec > 0.01}
+          
+          <!-- Segment region background -->
+          <div
+            class="segment-region"
+            class:has-trim={hasTrim}
+            style={`left: ${segLeftPercent}%; width: ${segWidthPercent}%`}
+            title={`Segment ${i + 1}: ${formatTime(boundary.originalDurationSec)}`}
+          >
+            <span class="segment-region-label">S{i + 1}</span>
+          </div>
 
-    <button
-      class="trim-handle"
-      style={`left: ${getPositionPercent(trimStart)}%`}
-      on:pointerdown={(event) => handleTrimPointerDown(event, "start")}
-      title="Adjust start trim"
-    ></button>
+          <!-- Kept range (between trims) -->
+          <div
+            class="segment-kept"
+            style={`left: ${keptLeftPercent}%; width: ${keptWidthPercent}%`}
+            title={`Kept: ${formatTime(Math.max(0, boundary.originalDurationSec - trimDisplay.trimStartSec - trimDisplay.trimEndSec))}`}
+          ></div>
 
-    <button
-      class="trim-handle"
-      style={`left: ${getPositionPercent(trimEnd)}%`}
-      on:pointerdown={(event) => handleTrimPointerDown(event, "end")}
-      title="Adjust end trim"
-    ></button>
+          <!-- Segment trim handles -->
+          <button
+            class="segment-trim-handle start"
+            style={`left: ${keptLeftPercent}%`}
+            on:pointerdown={(e) => handleSegmentTrimPointerDown(e, boundary.id, "start")}
+            title={`Trim start of segment ${i + 1} (${formatTime(trimDisplay.trimStartSec)} trimmed)`}
+          ></button>
+          <button
+            class="segment-trim-handle end"
+            style={`left: ${keptRightPercent}%`}
+            on:pointerdown={(e) => handleSegmentTrimPointerDown(e, boundary.id, "end")}
+            title={`Trim end of segment ${i + 1} (${formatTime(trimDisplay.trimEndSec)} trimmed)`}
+          ></button>
+
+          <!-- Segment boundary marker (between segments) -->
+          {#if i > 0}
+            <div
+              class="segment-boundary"
+              style={`left: ${segLeftPercent}%`}
+              title={`Segment ${i + 1} starts at ${formatTime(boundary.originalStartSec)}`}
+            >
+            </div>
+          {/if}
+        {/each}
+      </div>
+    {/if}
 
     <div class="click-lines-layer">
       {#each clickMarkers as marker, index}
         {@const seconds = marker.seconds}
-        {@const clickZoomEvent = findZoomEventForTime($timelineStore.events, seconds)}
+        {@const clickZoomEvent = segmentBoundaries
+          .flatMap((b) =>
+            ($timelineStore.segmentEvents?.[b.id] ?? []).map((e) => ({ boundary: b, event: e }))
+          )
+          .find((item) => {
+            if (item.event.type !== "zoom") return false;
+            const start = item.boundary.originalStartSec + item.event.startTime;
+            const end = start + item.event.duration;
+            return seconds >= start && seconds <= end;
+          })}
         <button
           type="button"
           class="click-line"
@@ -435,14 +659,17 @@
     </div>
 
     <div class="events-layer">
-      {#each $timelineStore.events as rawEvent (rawEvent.id)}
-        {@const timelineEvent = getEventDisplay(rawEvent)}
-        {@const startPercent = getPositionPercent(timelineEvent.startTime)}
+      {#each timelineEvents as item (item.event.id)}
+        {@const boundary = segmentBoundaries.find((b) => b.id === item.segmentId)}
+        {@const timelineEvent = getEventDisplay(item.event)}
+        {@const globalStart = (boundary?.originalStartSec ?? 0) + timelineEvent.startTime}
+        {@const globalEnd = (boundary?.originalStartSec ?? 0) + timelineEvent.startTime + timelineEvent.duration}
+        {@const startPercent = getPositionPercent(globalStart)}
         {@const widthPercent = Math.max(
           0.75,
-          getPositionPercent(timelineEvent.startTime + timelineEvent.duration) - startPercent
+          getPositionPercent(globalEnd) - startPercent
         )}
-        {@const isSelected = $timelineStore.selectedEventId === timelineEvent.id}
+        {@const isSelected = $timelineStore.selectedEvent?.eventId === timelineEvent.id}
         
         <!-- svelte-ignore a11y-click-events-have-key-events -->
         <div
@@ -494,7 +721,7 @@
       {/each}
     </div>
 
-    <div class="current-time-indicator" style={`left: ${getPositionPercent(currentTime)}%`}></div>
+    <div class="current-time-indicator" style={`left: ${getPositionPercent(effectiveToDisplayTime(currentTime))}%`}></div>
   </div>
 </div>
 
@@ -626,36 +853,105 @@
     margin-top: 4px;
   }
 
-  .trim-range {
+  .segment-trims-layer {
     position: absolute;
-    top: 40px;
-    height: 48px;
-    background: rgba(99, 102, 241, 0.08); /* Indigo tint */
-    border: 1px dashed rgba(99, 102, 241, 0.3);
+    inset: 0;
     pointer-events: none;
-    border-radius: 4px;
     z-index: 1;
   }
 
-  .trim-handle {
+  .segment-region {
     position: absolute;
-    top: 36px;
-    width: 10px;
-    height: 56px;
-    background: #334155; /* Slate 700 */
-    border: 2px solid white;
+    top: 40px;
+    height: 48px;
+    background: rgba(2, 6, 23, 0.04);
+    border: 1px solid rgba(2, 6, 23, 0.08);
     border-radius: 4px;
+    pointer-events: none;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 2px;
+  }
+
+  .segment-region.has-trim {
+    background: rgba(2, 6, 23, 0.05);
+    border-color: rgba(2, 6, 23, 0.12);
+  }
+
+  .segment-region-label {
+    font-size: 0.55rem;
+    font-weight: 600;
+    color: #059669;
+    background: rgba(16, 185, 129, 0.15);
+    padding: 1px 4px;
+    border-radius: 3px;
+    opacity: 0.8;
+  }
+
+  .segment-kept {
+    position: absolute;
+    top: 40px;
+    height: 48px;
+    background: rgba(16, 185, 129, 0.18);
+    border: 1px solid rgba(16, 185, 129, 0.32);
+    border-radius: 4px;
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .segment-trim-handle {
+    position: absolute;
+    top: 38px;
+    width: 8px;
+    height: 52px;
+    background: #10b981;
+    border: 2px solid white;
+    border-radius: 3px;
     transform: translateX(-50%);
     cursor: ew-resize;
-    z-index: 10;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    z-index: 8;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.15);
     transition: transform 0.1s, background 0.1s;
+    pointer-events: all;
   }
-  
-  .trim-handle:hover {
-    background: #1e293b; /* Slate 800 */
+
+  .segment-trim-handle:hover {
+    background: #059669;
     transform: translateX(-50%) scale(1.1);
   }
+
+  .segment-trim-handle.start {
+    border-left-width: 3px;
+  }
+
+  .segment-trim-handle.end {
+    border-right-width: 3px;
+  }
+
+  .segment-boundary {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg, #10b981 0%, #059669 100%);
+    transform: translateX(-50%);
+    pointer-events: none;
+  }
+
+  .segment-boundary::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid #10b981;
+  }
+
 
   .click-lines-layer {
     position: absolute;

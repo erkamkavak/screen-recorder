@@ -8,6 +8,9 @@
   import { drawCaptionsOverlay } from "../../lib/canvas/captions";
   import { drawClickRipplesOverlay, drawPointerCursorOverlay } from "../../lib/canvas/pointerOverlays";
   import { createAudioElement, createVideoElement, loadImage, waitForMetadata } from "../../lib/canvas/mediaElements";
+  import type { RecordingSegment } from "../../lib/stores";
+  import { getSegmentForTime, getTotalSegmentsDuration } from "../../lib/rendering/segmentRenderer";
+  import { getPointerRecords } from "../../lib/pointer/pointerState";
   import type {
     Background,
     CanvasSize,
@@ -35,6 +38,7 @@
   export let showMouse: boolean = true;
   export let showClicks: boolean = true;
   export let includeAudio: boolean = true;
+  export let segments: RecordingSegment[] = [];
 
   export let transcript: { segments: { startMs: number; endMs: number; text: string }[] } | null = null;
   export let showCaptions: boolean = true;
@@ -65,10 +69,165 @@
   let webcamUrl: string | null = null;
   let audioUrl: string | null = null;
 
+  type SegmentMedia = {
+    segment: RecordingSegment;
+    startSec: number;
+    screenUrl: string;
+    webcamUrl: string | null;
+    audioUrl: string | null;
+    screenVideo: HTMLVideoElement;
+    webcamVideo: HTMLVideoElement | null;
+    audioEl: HTMLAudioElement | null;
+  };
+  let segmentMediaById = new Map<string, SegmentMedia>();
+  let segmentStartsSec: number[] = [];
+  let segmentOriginalStartsSec: number[] = [];
+  let activeSegmentIndex = 0;
+  let activeSegmentStartSec = 0;
+  let activeSegment: RecordingSegment | null = null;
+  let activeSegmentOriginalStartSec = 0;
+  let activeSegmentId: string | null = null;
+
   let screenShare: Share | null = null;
   let drawArgs: DrawArgs | null = null;
   let animationId: number;
   let playing = false;
+
+  const hasMultipleSegments = () => (segments?.length ?? 0) > 1;
+
+  const getSegmentStartsSec = (segs: RecordingSegment[]) => {
+    const starts: number[] = [];
+    let acc = 0;
+    for (const seg of segs) {
+      starts.push(acc);
+      acc += Math.max(0, (seg.duration - seg.trimStart - seg.trimEnd) / 1000);
+    }
+    return starts;
+  };
+
+  const getSegmentOriginalStartsSec = (segs: RecordingSegment[]) => {
+    const starts: number[] = [];
+    let acc = 0;
+    for (const seg of segs) {
+      starts.push(acc);
+      acc += Math.max(0, seg.duration / 1000);
+    }
+    return starts;
+  };
+
+  const activateSegment = async (nextIndex: number, localTimeSec: number) => {
+    const seg = segments[nextIndex];
+    if (!seg) return;
+    const next = segmentMediaById.get(seg.id);
+    if (!next) return;
+    activeSegmentIndex = nextIndex;
+    activeSegmentStartSec = segmentStartsSec[nextIndex] ?? next.startSec ?? 0;
+    activeSegment = next.segment;
+    activeSegmentOriginalStartSec = segmentOriginalStartsSec[nextIndex] ?? 0;
+    activeSegmentId = seg.id;
+
+    // Pause old media before swapping references
+    try { screenVideo?.pause(); } catch {}
+    try { webcamVideo?.pause(); } catch {}
+    try { audioEl?.pause(); } catch {}
+
+    screenVideo = next.screenVideo;
+    webcamVideo = next.webcamVideo;
+    audioEl = next.audioEl;
+    screenUrl = next.screenUrl;
+    webcamUrl = next.webcamUrl;
+    audioUrl = next.audioUrl;
+
+    // Ensure metadata-based sizing and share preview are updated
+    screenShare = {
+      id: "composite-screen",
+      preview: screenVideo,
+      stream: null,
+      width: screenVideo.videoWidth,
+      height: screenVideo.videoHeight,
+    };
+    screenWidth = screenVideo.videoWidth;
+    screenHeight = screenVideo.videoHeight;
+    // also update drawArgs active share to reflect new segment and dimensions
+    // (activateSegment can run before drawArgs is initialized)
+    if (drawArgs) {
+      drawArgs = {
+        ...drawArgs,
+        activeShare: screenShare,
+        webcamState: {
+          ...drawArgs.webcamState,
+          preview: webcamVideo,
+          width: webcamVideo?.videoWidth ?? 0,
+          height: webcamVideo?.videoHeight ?? 0,
+        },
+      };
+    }
+
+    const clampedLocal = Math.max(0, Math.min(screenVideo.duration || localTimeSec, localTimeSec));
+    screenVideo.currentTime = clampedLocal;
+    if (webcamVideo) webcamVideo.currentTime = clampedLocal;
+    if (audioEl) audioEl.currentTime = clampedLocal;
+
+    if (playing) {
+      try {
+        await Promise.all([
+          screenVideo.play(),
+          webcamVideo?.play() ?? Promise.resolve(),
+          audioEl?.play() ?? Promise.resolve(),
+        ]);
+      } catch (e) {
+        console.warn("Failed to resume playback after segment activation", e);
+      }
+    }
+  };
+
+  const setGlobalTime = async (timelineSec: number) => {
+    const clamped = clampToTimeline(timelineSec);
+    if (!hasMultipleSegments()) {
+      seek(clamped);
+      return;
+    }
+    const info = getSegmentForTime(segments, clamped);
+    if (!info) return;
+
+    if (info.segmentIndex !== activeSegmentIndex) {
+      await activateSegment(info.segmentIndex, info.localTime);
+    } else {
+      if (screenVideo) screenVideo.currentTime = info.localTime;
+      if (webcamVideo) webcamVideo.currentTime = info.localTime;
+      if (audioEl) audioEl.currentTime = info.localTime;
+    }
+    currentTime = clamped;
+  };
+
+  $: if (segments || includeAudio) {
+    const starts = getSegmentStartsSec(segments || []);
+    segmentStartsSec = starts;
+    segmentOriginalStartsSec = getSegmentOriginalStartsSec(segments || []);
+    duration = Math.max(0, getTotalSegmentsDuration(segments || []) / 1000);
+    
+    if (activeSegmentId) {
+      const foundIdx = (segments || []).findIndex(s => s.id === activeSegmentId);
+      if (foundIdx !== -1) {
+        activeSegmentIndex = foundIdx;
+        activeSegment = segments[foundIdx];
+        activeSegmentStartSec = starts[foundIdx];
+
+        // Ensure video is at the correct local time for the current global time
+        // Use a small epsilon to avoid unnecessary seeking during playback
+        if (screenVideo && !playing) {
+          const info = getSegmentForTime(segments, currentTime);
+          if (info && info.segmentIndex === activeSegmentIndex) {
+            if (Math.abs(screenVideo.currentTime - info.localTime) > 0.05) {
+              screenVideo.currentTime = info.localTime;
+              if (webcamVideo) webcamVideo.currentTime = info.localTime;
+              if (audioEl) audioEl.currentTime = info.localTime;
+            }
+          }
+        }
+      }
+    }
+  }
 
   $: if (pointerIconUrl) {
     const currentToken = ++pointerIconImageToken;
@@ -103,19 +262,72 @@
   }  
 
   const loadAssets = async () => {
-    const screenAsset = assets.screen;
-    if (!screenAsset) return;
-    screenUrl = await safeLoad(screenAsset);
-    if (!screenUrl) return;
-    screenVideo = createVideoElement(screenUrl);
-    await waitForMetadata(screenVideo);
+    segmentMediaById = new Map();
+    segmentStartsSec = [];
+    segmentOriginalStartsSec = [];
+    activeSegmentIndex = 0;
+    activeSegmentStartSec = 0;
+    activeSegment = null;
+    activeSegmentOriginalStartSec = 0;
+    activeSegmentId = null;
 
-    webcamUrl = await safeLoad(assets.webcam ?? null);
-    webcamVideo = webcamUrl ? createVideoElement(webcamUrl) : null;
-    if (webcamVideo) await waitForMetadata(webcamVideo);
+    if (hasMultipleSegments()) {
+      const starts = getSegmentStartsSec(segments);
+      segmentStartsSec = starts;
+      segmentOriginalStartsSec = getSegmentOriginalStartsSec(segments);
+      for (let i = 0; i < segments.length; i++) {
+        const seg = segments[i];
+        const segAssets = seg.assets;
+        const screenAsset = segAssets.screen;
+        if (!screenAsset) continue;
+        const segScreenUrl = await safeLoad(screenAsset);
+        if (!segScreenUrl) continue;
+        const segWebcamUrl = await safeLoad(segAssets.webcam ?? null);
+        const segAudioUrl = includeAudio ? await safeLoad(segAssets.audio ?? null) : null;
 
-    audioUrl = includeAudio ? await safeLoad(assets.audio ?? null) : null;
-    audioEl = audioUrl ? createAudioElement(audioUrl) : null;
+        const segScreenVideo = createVideoElement(segScreenUrl);
+        const segWebcamVideo = segWebcamUrl ? createVideoElement(segWebcamUrl) : null;
+        await Promise.all([
+          waitForMetadata(segScreenVideo),
+          segWebcamVideo ? waitForMetadata(segWebcamVideo) : Promise.resolve(),
+        ]);
+        const segAudioEl = segAudioUrl ? createAudioElement(segAudioUrl) : null;
+
+        segmentMediaById.set(seg.id, {
+          segment: seg,
+          startSec: starts[i] ?? 0,
+          screenUrl: segScreenUrl,
+          webcamUrl: segWebcamUrl,
+          audioUrl: segAudioUrl,
+          screenVideo: segScreenVideo,
+          webcamVideo: segWebcamVideo,
+          audioEl: segAudioEl,
+        });
+      }
+
+      // Activate first loaded segment
+      if (!segmentMediaById.size) return;
+      // Find first segment that actually loaded media for
+      const firstIdx = segments.findIndex((s) => segmentMediaById.has(s.id));
+      if (firstIdx < 0) return;
+      await activateSegment(firstIdx, segments[firstIdx].trimStart / 1000);
+      duration = Math.max(0, getTotalSegmentsDuration(segments) / 1000);
+      currentTime = 0;
+    } else {
+      const screenAsset = assets.screen;
+      if (!screenAsset) return;
+      screenUrl = await safeLoad(screenAsset);
+      if (!screenUrl) return;
+      screenVideo = createVideoElement(screenUrl);
+      await waitForMetadata(screenVideo);
+
+      webcamUrl = await safeLoad(assets.webcam ?? null);
+      webcamVideo = webcamUrl ? createVideoElement(webcamUrl) : null;
+      if (webcamVideo) await waitForMetadata(webcamVideo);
+
+      audioUrl = includeAudio ? await safeLoad(assets.audio ?? null) : null;
+      audioEl = audioUrl ? createAudioElement(audioUrl) : null;
+    }
 
     // Load pointer icons
     if (pointerIconUrl) {
@@ -161,12 +373,14 @@
     };
 
     // Handle NaN duration (can happen if metadata didn't load properly)
-    const videoDuration = screenVideo.duration;
-    duration = isFinite(videoDuration) && videoDuration > 0 ? videoDuration : 0;
-    currentTime = screenVideo.currentTime || 0;
+    if (!hasMultipleSegments()) {
+      const videoDuration = screenVideo.duration;
+      duration = isFinite(videoDuration) && videoDuration > 0 ? videoDuration : 0;
+      currentTime = screenVideo.currentTime || 0;
+    }
     
     // If duration is still 0, try to get it from durationchange event
-    if (duration === 0) {
+    if (!hasMultipleSegments() && duration === 0) {
       screenVideo.addEventListener("durationchange", () => {
         const d = screenVideo?.duration;
         if (d && isFinite(d) && d > 0) {
@@ -210,14 +424,22 @@
 
   const drawFrame = () => {
     if (!ctx || !screenVideo || !drawArgs) return;
+    const localOriginalTimeSec = screenVideo.currentTime || 0;
+    const segmentZoomEvents = activeSegmentId ? (snapshot.segmentEvents?.[activeSegmentId] ?? []) : [];
+    const zoomEvalTimeSec = hasMultipleSegments() ? localOriginalTimeSec : (screenVideo.currentTime || 0);
+
+    const segmentPointerRecords = hasMultipleSegments() && activeSegment
+      ? getPointerRecords(activeSegment.events)
+      : pointerRecords;
+    const segmentClickRecords = segmentPointerRecords.filter((event) => event.kind === "click");
 
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
     ctx.imageSmoothingQuality = "high";
     ctx.globalCompositeOperation = "source-over";
 
     ctx.save();
-    const { scale, focusX, focusY } = computeZoomState(snapshot.events, screenVideo.currentTime);
-    const pointerState = computePointerState(screenVideo.currentTime, pointerRecords);
+    const { scale, focusX, focusY } = computeZoomState(segmentZoomEvents, zoomEvalTimeSec);
+    const pointerState = computePointerState(zoomEvalTimeSec, segmentPointerRecords);
     const zoomFocusX = pointerState.visible ? pointerState.x : focusX;
     const zoomFocusY = pointerState.visible ? pointerState.y : focusY;
     applyZoom(scale, zoomFocusX, zoomFocusY);
@@ -225,12 +447,11 @@
       drawScreenShare(drawArgs);
       const placement = getPlacement();
       if (ctx && placement && showClicks) {
-        const clickRecords = pointerRecords.filter((event) => event.kind === "click");
         drawClickRipplesOverlay({
           ctx,
           placement,
-          clickRecords,
-          timeSec: screenVideo.currentTime,
+          clickRecords: segmentClickRecords,
+          timeSec: zoomEvalTimeSec,
           canvasSize,
           pointerSize: pointerIndicatorSize,
         });
@@ -261,7 +482,7 @@
           ctx,
           canvas: canvasEl,
           canvasSize,
-          timeSec: screenVideo.currentTime,
+          timeSec: zoomEvalTimeSec,
           segments: transcript.segments,
         });
       }
@@ -287,9 +508,9 @@
     if (!screenVideo) return;
     try {
       playing = true;
-      // Ensure we start within trim range
-      if (screenVideo.currentTime < trimStart() || screenVideo.currentTime > trimEnd()) {
-        screenVideo.currentTime = trimStart();
+      // Ensure we start within timeline
+      if (duration > 0 && (currentTime < 0 || currentTime > duration)) {
+        await setGlobalTime(0);
       }
       // keep media in sync
       if (webcamVideo) webcamVideo.currentTime = screenVideo.currentTime;
@@ -308,6 +529,7 @@
 
   const updateAudio = async () => {
     if (!assets) return;
+    if (hasMultipleSegments()) return;
     if (includeAudio) {
       if (!audioEl) {
         const url = await safeLoad(assets.audio ?? null);
@@ -327,8 +549,8 @@
 
   $: (async () => { await updateAudio(); })();
 
-  // Redraw once when toggles change and we're paused. Include pointer size so the paused view updates immediately.
-  $: if (!playing && pointerIndicatorSize !== undefined) {
+  // Redraw once when toggles change, snapshot (zooms) change, and we're paused.
+  $: if (!playing && (pointerIndicatorSize !== undefined || snapshot !== undefined)) {
     drawFrame();
   }
 
@@ -340,17 +562,17 @@
     audioEl?.pause();
   };
 
-  const trimStart = () => Math.max(0, snapshot.trimStart || 0);
-  const trimEnd = () => {
-    const d = duration || screenVideo?.duration || 0;
-    return Math.max(0, Math.min(d, snapshot.trimEnd ?? d));
-  };
-
-  const clampToTrim = (t: number) => Math.max(trimStart(), Math.min(trimEnd(), t));
+  const clampToTimeline = (t: number) => Math.max(0, Math.min(duration || 0, t));
 
   const seek = (value: number) => {
     if (!screenVideo) return;
-    const clamped = clampToTrim(value);
+    const clamped = clampToTimeline(value);
+    if (hasMultipleSegments()) {
+      void setGlobalTime(clamped).then(() => {
+        if (!playing) drawFrame();
+      });
+      return;
+    }
     screenVideo.currentTime = clamped;
     if (webcamVideo) webcamVideo.currentTime = clamped;
     if (audioEl) audioEl.currentTime = clamped;
@@ -360,18 +582,54 @@
   let syncId: number;
   const startSyncTimeLoop = () => {
     cancelAnimationFrame(syncId);
+    const epsilon = 0.02;
     const update = () => {
       if (!screenVideo) return;
-      currentTime = screenVideo.currentTime;
-      // Stop at trim end
-      if (currentTime >= trimEnd() - 0.0005) {
+      if (hasMultipleSegments() && activeSegment) {
+        const local = screenVideo.currentTime;
+        const effectiveLocal = Math.max(0, local - (activeSegment.trimStart / 1000));
+        currentTime = activeSegmentStartSec + effectiveLocal;
+      } else {
+        currentTime = screenVideo.currentTime;
+      }
+      // Stop at end of timeline
+      if (duration > 0 && currentTime >= duration - epsilon) {
         pause();
-        currentTime = trimEnd();
-        screenVideo.currentTime = currentTime;
-        if (webcamVideo) webcamVideo.currentTime = currentTime;
-        if (audioEl) audioEl.currentTime = currentTime;
+        currentTime = duration;
+        if (hasMultipleSegments()) {
+          void setGlobalTime(currentTime);
+        } else {
+          screenVideo.currentTime = currentTime;
+          if (webcamVideo) webcamVideo.currentTime = currentTime;
+          if (audioEl) audioEl.currentTime = currentTime;
+        }
         drawFrame();
         return;
+      }
+
+      if (hasMultipleSegments() && activeSegment && segmentMediaById.size) {
+        const localEnd = (activeSegment.duration - activeSegment.trimEnd) / 1000;
+        if (screenVideo.currentTime >= localEnd - epsilon) {
+          let nextIdx = activeSegmentIndex + 1;
+          while (nextIdx < segments.length && !segmentMediaById.has(segments[nextIdx].id)) {
+            nextIdx += 1;
+          }
+          if (nextIdx < segments.length && nextIdx !== activeSegmentIndex) {
+            const nextStart = segmentStartsSec[nextIdx] ?? currentTime;
+            void setGlobalTime(Math.max(nextStart, currentTime));
+          } else {
+            // Last playable segment: stop at its trim end
+            pause();
+            screenVideo.currentTime = localEnd;
+            if (webcamVideo) webcamVideo.currentTime = localEnd;
+            if (audioEl) audioEl.currentTime = localEnd;
+
+            const effectiveEnd = duration > 0 ? duration : currentTime;
+            currentTime = effectiveEnd;
+            drawFrame();
+            return;
+          }
+        }
       }
       if (playing) {
         syncId = requestAnimationFrame(update);
@@ -390,7 +648,7 @@
     const value = Number(target.value);
     if (!Number.isNaN(value)) seek(value);
     // redraw when paused
-    if (!playing) drawFrame();
+    if (!playing && !hasMultipleSegments()) drawFrame();
   };
 
   onMount(async () => {
