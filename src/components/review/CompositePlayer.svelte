@@ -306,8 +306,13 @@
       if (firstIdx < 0) return;
       
       const info = getSegmentForTime(segments, currentTime);
-      const targetIdx = info?.segmentIndex ?? firstIdx;
-      const targetLocalTime = info?.localTime ?? (segments[targetIdx].trimStart / 1000);
+      let targetIdx = info?.segmentIndex ?? firstIdx;
+      if (!segmentMediaById.has(segments[targetIdx]?.id)) {
+        targetIdx = firstIdx;
+      }
+      const targetLocalTime = info?.segmentIndex === targetIdx
+        ? (info?.localTime ?? (segments[targetIdx].trimStart / 1000))
+        : (segments[targetIdx].trimStart / 1000);
       
       await activateSegment(targetIdx, targetLocalTime);
       duration = Math.max(0, getTotalSegmentsDuration(segments) / 1000);
@@ -326,6 +331,11 @@
 
       audioUrl = $reviewSessionStore.includeAudioTrack ? await safeLoad(assets.audio ?? null) : null;
       audioEl = audioUrl ? createAudioElement(audioUrl) : null;
+    }
+
+    if (!screenVideo) {
+      console.warn("CompositePlayer: screenVideo not available after loadAssets");
+      return;
     }
 
     // Load pointer icons
@@ -686,4 +696,3 @@
     object-fit: contain;
   }
 </style>
-
