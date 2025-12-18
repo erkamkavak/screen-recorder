@@ -1,8 +1,8 @@
 <script lang="ts">
   import RangeInput from "../ui/RangeInput.svelte";
 
-  export let pointerSize = 14;
-  export let pointerIconSelection = "none";
+  import { reviewSessionStore } from "../../lib/stores/reviewSession";
+
   export let pointerIconOptions: readonly {
     id: string;
     label: string;
@@ -10,18 +10,16 @@
     pressedData?: string | null;
   }[] = [];
   export let zipPointerImportMessage = "";
-  export let onPointerSizeChange: (value: number) => void = () => {};
-  export let onPointerIconSelect: (selection: string) => void = () => {};
   export let onZipPointerFileChange: (event: Event) => void = () => {};
 
   let pointerZipLabel = "No file selected";
 
   const handlePointerSizeInput = (event: CustomEvent<number>) => {
-    onPointerSizeChange?.(event.detail);
+    reviewSessionStore.setPointerIndicatorSize(event.detail);
   };
 
   const handlePointerIconSelect = (id: string) => {
-    onPointerIconSelect?.(id);
+    reviewSessionStore.setPointerIconSelection(id);
   };
 
   const handleZipPointerFileInput = (event: Event) => {
@@ -40,7 +38,7 @@
     min={6}
     max={64}
     step={2}
-    value={pointerSize}
+    value={$reviewSessionStore.pointerIndicatorSize}
     on:input={handlePointerSizeInput}
     showPercentage={false}
   />
@@ -48,7 +46,7 @@
   <div class="pointer-icon-options">
     {#each pointerIconOptions as option (option.id)}
       <button
-        class={`pointer-icon-option ${pointerIconSelection === option.id ? "active" : ""}`}
+        class={`pointer-icon-option ${$reviewSessionStore.pointerIconSelection === option.id ? "active" : ""}`}
         type="button"
         on:click={() => handlePointerIconSelect(option.id)}
       >
