@@ -3,7 +3,7 @@
   import ReviewHeaderActions from "./ReviewHeaderActions.svelte";
   import Timeline from "../Timeline.svelte";
   import type { PointerEventRecord, RecordingSegment } from "../../lib/stores";
-  import type {
+  import {
     Background,
     CanvasSize,
     GeneralLayoutState,
@@ -11,6 +11,7 @@
     ScreenState,
     Theme,
     WebcamLayoutState,
+    currentProject,
   } from "../../lib/stores";
   import type { TimelineSnapshot } from "../../lib/stores/timeline";
 
@@ -23,18 +24,10 @@
   export let background: Background;
   export let snapshot: TimelineSnapshot;
 
-  export let includeWebcamTrack: boolean;
-  export let includePointerTrack: boolean;
-  export let includeClickTrack: boolean;
-  export let includeAudioTrack: boolean;
-
   export let transcript: { segments: { startMs: number; endMs: number; text: string }[] } | null = null;
-  export let showCaptions: boolean = true;
 
-  export let pointerRecords: PointerEventRecord[] = [];
   export let pointerIconImageUrl: string | null = null;
   export let pointerIconPressedImageUrl: string | null = null;
-  export let pointerIndicatorSize: number = 14;
 
   export let duration = 0;
   export let currentTime = 0;
@@ -42,7 +35,6 @@
   export let screenHeight = 0;
 
   export let timelineDuration = 0;
-  export let sortedClickEvents: PointerEventRecord[] = [];
   export let addZoomForClick: (event: PointerEventRecord, seconds?: number) => void;
   export let segments: RecordingSegment[] = [];
   export let onSegmentTrimChange: ((segmentId: string, edge: "start" | "end", valueMs: number) => void) | null = null;
@@ -65,8 +57,25 @@
 >
   <article class="playback-card plain">
     <header class="panel-header">
-      <div>
-        <h2>Review</h2>
+      <div class="header-content">
+        <div class="header-top">
+          <h2>Review</h2>
+          {#if $currentProject}
+            <div class="project-badge">
+              <div class="pulse-dot"></div>
+              <span>{$currentProject.name || 'Untitled Project'}</span>
+              <button 
+                class="exit-btn"
+                on:click={() => currentProject.set(null)}
+                title="Finish Project & Reset"
+              >
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="3">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          {/if}
+        </div>
         <p>Use the timeline to scrub. The screen asset plays back directly with a live pointer overlay.</p>
       </div>
       <ReviewHeaderActions
@@ -88,18 +97,10 @@
         theme={theme}
         background={background}
         snapshot={snapshot}
-        showScreen={true}
-        showWebcam={includeWebcamTrack}
-        showMouse={includePointerTrack}
-        showClicks={includeClickTrack}
-        includeAudio={includeAudioTrack}
         {segments}
         {transcript}
-        {showCaptions}
-        {pointerRecords}
         pointerIconUrl={pointerIconImageUrl}
         pointerIconPressedUrl={pointerIconPressedImageUrl}
-        pointerIndicatorSize={pointerIndicatorSize}
         bind:duration
         bind:currentTime
         bind:screenWidth
@@ -110,7 +111,6 @@
     <Timeline
       duration={timelineDuration}
       currentTime={currentTime}
-      clickEvents={sortedClickEvents}
       onAddZoomForClick={addZoomForClick}
       {segments}
       {onSegmentTrimChange}
@@ -154,6 +154,60 @@
     margin: 0;
     font-size: 0.9rem;
     color: #475569;
+  }
+
+  .header-top {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+
+  .project-badge {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.25rem 0.6rem;
+    background: #eef2ff;
+    border: 1px solid #e0e7ff;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #4338ca;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: #6366f1;
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+  }
+
+  .exit-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.15rem;
+    margin-right: -0.15rem;
+    border-radius: 4px;
+    color: #818cf8;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: transparent;
+    border: none;
+  }
+
+  .exit-btn:hover {
+    background: #e0e7ff;
+    color: #4338ca;
   }
 
   .player-frame {
