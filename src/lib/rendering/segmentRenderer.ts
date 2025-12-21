@@ -211,7 +211,7 @@ export const getSegmentFrameAtTime = async (
         };
     }
 
-    const source = sources[timeInfo.segmentIndex];
+    const source = sources.find(s => s.segment.id === timeInfo.segment.id);
     if (!source) {
         return {
             screenBitmap: await createFallbackBitmap(),
