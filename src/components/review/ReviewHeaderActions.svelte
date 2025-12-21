@@ -5,9 +5,24 @@
 
   export let onContinueRecording: () => void;
   export let canContinueRecording: boolean = true;
+
+  export let onOpenZoomEditor: () => void = () => {};
+  export let isZoomEditorOpen: boolean = false;
 </script>
 
 <div class="header-actions">
+  <button
+    class="action-btn secondary pill"
+    on:click={onOpenZoomEditor}
+    title={isZoomEditorOpen ? "Zoom editor is open" : "Open zoom editor"}
+    disabled={isZoomEditorOpen}
+  >
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-3.5-3.5" />
+    </svg>
+    <span class="btn-label">Zoom editor</span>
+  </button>
   <button
     class="action-btn secondary pill"
     on:click={onSaveProject}

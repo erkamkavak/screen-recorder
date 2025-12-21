@@ -134,6 +134,7 @@
 
     // Ensure metadata-based sizing and share preview are updated
     screenShare = {
+      uid: "composite-screen",
       id: "composite-screen",
       preview: screenVideo,
       stream: null,
@@ -352,6 +353,7 @@
     if (!ctx) return;
 
     screenShare = {
+      uid: "composite-screen",
       id: "composite-screen",
       preview: screenVideo,
       stream: null,
@@ -654,6 +656,18 @@
     cancelAnimationFrame(animationId);
     pause();
   });
+
+  export const seekTo = (value: number) => seek(value);
+  export const playMedia = () => play();
+  export const pauseMedia = () => pause();
+  export const togglePlay = () => {
+    if (playing) {
+      pause();
+    } else {
+      void play();
+    }
+  };
+  export const isPlaying = () => playing;
 </script>
 
 <div class="player-shell">

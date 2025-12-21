@@ -1,6 +1,7 @@
 <script lang="ts">
   import CompositePlayer from "./CompositePlayer.svelte";
   import ReviewHeaderActions from "./ReviewHeaderActions.svelte";
+  import ZoomEditorOverlay from "./ZoomEditorOverlay.svelte";
   import Timeline from "../Timeline.svelte";
   import type { PointerEventRecord, RecordingSegment } from "../../lib/stores";
   import {
@@ -14,6 +15,8 @@
     currentProject,
   } from "../../lib/stores";
   import type { TimelineSnapshot } from "../../lib/stores/timeline";
+  import { onDestroy } from "svelte";
+  import { createZoomEditorController } from "../../lib/review/zoomEditorController";
 
   export let assets: RecordingAssets;
   export let canvasSize: CanvasSize;
@@ -50,11 +53,43 @@
   export let onContinueRecording: () => void;
   export let canContinueRecording: boolean = true;
 
+  export let onOpenZoomEditor: () => void = () => {};
+  export let onCloseZoomEditor: () => void = () => {};
+  export let isZoomEditorOpen: boolean = false;
+
   let player: any;
+  let isZoomRecording = false;
+
+  const zoomEditorController = createZoomEditorController({
+    getCurrentTime: () => currentTime,
+    getTimelineDuration: () => timelineDuration,
+    getSegments: () => segments,
+    getPlayer: () => player,
+    getPlayerFrameEl: () => playerFrameEl,
+    onClose: onCloseZoomEditor,
+    onRecordingChange: (active) => {
+      isZoomRecording = active;
+    },
+  });
+
+  $: if (isZoomEditorOpen) {
+    zoomEditorController.open();
+  } else {
+    zoomEditorController.close();
+  }
+
+  $: if (isZoomEditorOpen && isZoomRecording) {
+    zoomEditorController.syncZoomDuration(currentTime);
+  }
+
+  onDestroy(() => {
+    zoomEditorController.close();
+  });
 </script>
 
 <section
   class="review-main"
+  class:zoom-mode={isZoomEditorOpen}
   style={`flex: 0 0 ${previewWidthPx}px; width: ${previewWidthPx}px;`}
 >
   <article class="playback-card plain">
@@ -86,10 +121,14 @@
         {projectSaved}
         {onContinueRecording}
         {canContinueRecording}
+        {onOpenZoomEditor}
+        {isZoomEditorOpen}
       />
     </header>
-
-    <div class="player-frame narrow" bind:this={playerFrameEl}>
+    <div class="player-frame narrow" bind:this={playerFrameEl} on:mousemove={zoomEditorController.updatePointerFocus}>
+      {#if isZoomEditorOpen}
+        <ZoomEditorOverlay isRecording={isZoomRecording} onExit={onCloseZoomEditor} />
+      {/if}
       <CompositePlayer
         bind:this={player}
         assets={assets}
@@ -230,6 +269,19 @@
     width: 100%;
     max-width: 100%;
     margin: 0;
+  }
+
+  .review-main.zoom-mode {
+    width: 100% !important;
+    flex: 1 1 auto !important;
+  }
+
+  .review-main.zoom-mode .player-frame {
+    margin-top: 0.75rem;
+  }
+
+  .review-main.zoom-mode :global(.player-shell) {
+    min-height: 65vh;
   }
 
   @media (max-width: 1024px) {

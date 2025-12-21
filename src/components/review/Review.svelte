@@ -72,6 +72,7 @@
   let asideWidthPx = minAsideWidth;
   let isResizing = false;
   let rootResizeObserver: ResizeObserver | null = null;
+  let isZoomEditorOpen = false;
 
   const computeLayoutSizes = (rootWidth: number, requestedPreview?: number) => {
     const { previewWidthPx: preview, asideWidthPx: aside } = computeReviewLayoutSizes(
@@ -90,6 +91,11 @@
     const paddingLeft = parseFloat(styles.paddingLeft || "0");
     const paddingRight = parseFloat(styles.paddingRight || "0");
     const innerWidth = rect.width - paddingLeft - paddingRight;
+    if (isZoomEditorOpen) {
+      previewWidthPx = innerWidth;
+      asideWidthPx = 0;
+      return;
+    }
     computeLayoutSizes(innerWidth);
   };
 
@@ -121,6 +127,16 @@
   $: hasWebcam = !!assets?.webcam;
   $: hasAudio = !!assets?.audio;
 
+  const openZoomEditor = () => {
+    isZoomEditorOpen = true;
+    updateRootWidth();
+  };
+
+  const closeZoomEditor = () => {
+    isZoomEditorOpen = false;
+    updateRootWidth();
+  };
+
   onMount(() => {
     updateRootWidth();
     const handleWindowResize = () => updateRootWidth();
@@ -144,7 +160,7 @@
 </script>
 
 {#if lastRecording && assets}
-  <div class="review-root" bind:this={reviewRootEl}>
+  <div class="review-root" class:zoom-mode={isZoomEditorOpen} bind:this={reviewRootEl}>
     <ReviewPlayerPane
       {assets}
       {canvasSize}
@@ -172,35 +188,40 @@
       {projectSaved}
       {onContinueRecording}
       {canContinueRecording}
+      onOpenZoomEditor={openZoomEditor}
+      onCloseZoomEditor={closeZoomEditor}
+      {isZoomEditorOpen}
     />
-    <div
-      class={`review-resize-handle ${isResizing ? "is-resizing" : ""}`}
-      aria-hidden="true"
-      on:pointerdown={startResize}
-    />
-    <ReviewRenderSidebar
-      {asideWidthPx}
-      {hasWebcam}
-      {hasAudio}
-      {audioFilePath}
-      captionsAvailable={!!$transcriptionResult?.segments?.length}
-      {renderFormatOptions}
-      {resolutionPresets}
-      {frameRatePresets}
-      {pointerIconOptions}
-      {removablePointerIconIds}
-      {zipPointerImportMessage}
-      {onZipPointerFileChange}
-      {onRemovePointerIconOption}
-      {isRenderingVideo}
-      {renderProgress}
-      onRender={downloadEditedVideo}
-      {onCancelRender}
-      {resetToRecorder}
-      {onResetAndNew}
-      {onContinueRecording}
-      {videoDuration}
-    />
+    {#if !isZoomEditorOpen}
+      <div
+        class={`review-resize-handle ${isResizing ? "is-resizing" : ""}`}
+        aria-hidden="true"
+        on:pointerdown={startResize}
+      />
+      <ReviewRenderSidebar
+        {asideWidthPx}
+        {hasWebcam}
+        {hasAudio}
+        {audioFilePath}
+        captionsAvailable={!!$transcriptionResult?.segments?.length}
+        {renderFormatOptions}
+        {resolutionPresets}
+        {frameRatePresets}
+        {pointerIconOptions}
+        {removablePointerIconIds}
+        {zipPointerImportMessage}
+        {onZipPointerFileChange}
+        {onRemovePointerIconOption}
+        {isRenderingVideo}
+        {renderProgress}
+        onRender={downloadEditedVideo}
+        {onCancelRender}
+        {resetToRecorder}
+        {onResetAndNew}
+        {onContinueRecording}
+        {videoDuration}
+      />
+    {/if}
   </div>
 {:else}
   <div class="fallback">
