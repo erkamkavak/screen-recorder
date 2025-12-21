@@ -11,8 +11,52 @@ export type ComputedPointerState = {
   cursorShape: string;
 };
 
-export const getPointerRecords = (events: InputEventRecord[] | null | undefined): PointerEventRecord[] =>
-  (events ?? [])
+/**
+ * Deduplicates pointer events to ensure clean visuals while maintaining visibility.
+ * - Always keeps 'pointerdown', 'pointerup', and 'pointermove' so the cursor remains visible
+ *   and its position/pressed state stays accurate.
+ * - Filters 'click' events so only one ripple occurs per logical press (the first 'down' event).
+ */
+export const deduplicatePointerEvents = (records: PointerEventRecord[]): PointerEventRecord[] => {
+  const result: PointerEventRecord[] = [];
+  const pressedButtons = new Set<number>();
+
+  // Track the timestamp of the first 'pointerdown' in the current press sequence
+  const pressStartTimes = new Map<number, number>();
+
+  for (const record of records) {
+    const button = record.button ?? 0;
+
+    if (record.kind === "pointerdown") {
+      // Always keep for position and visibility tracking
+      result.push(record);
+
+      if (!pressedButtons.has(button)) {
+        pressedButtons.add(button);
+        pressStartTimes.set(button, record.t);
+      }
+    } else if (record.kind === "pointerup") {
+      result.push(record);
+      pressedButtons.delete(button);
+      pressStartTimes.delete(button);
+    } else if (record.kind === "click") {
+      // Only allow the click event that corresponds to the start of the press
+      if (pressStartTimes.has(button) && pressStartTimes.get(button) === record.t) {
+        result.push(record);
+        // Clear it so even if multiple click events exist at this timestamp, only one is kept
+        pressStartTimes.set(button, -1);
+      }
+    } else {
+      // Always keep pointermove events
+      result.push(record);
+    }
+  }
+
+  return result;
+};
+
+export const getPointerRecords = (events: InputEventRecord[] | null | undefined): PointerEventRecord[] => {
+  const filtered = (events ?? [])
     .filter((event): event is PointerEventRecord =>
       event.kind === "pointermove" ||
       event.kind === "click" ||
@@ -20,6 +64,9 @@ export const getPointerRecords = (events: InputEventRecord[] | null | undefined)
       event.kind === "pointerup"
     )
     .sort((a, b) => a.t - b.t);
+
+  return deduplicatePointerEvents(filtered);
+};
 
 export const computePointerState = (
   time: number,
@@ -84,7 +131,7 @@ export const computePointerState = (
   // Interpolate between lastEvent and nextEvent for smoother movement
   let x = lastPosEvent.x ?? 0.5;
   let y = lastPosEvent.y ?? 0.5;
-  
+
   if (nextPosEvent && nextPosEvent.t > lastPosEvent.t) {
     const totalDelta = nextPosEvent.t - lastPosEvent.t;
     const progress = (targetTime - lastPosEvent.t) / totalDelta;
@@ -96,7 +143,7 @@ export const computePointerState = (
 
   const normalizedX = Math.min(Math.max(x, 0), 1);
   const normalizedY = Math.min(Math.max(y, 0), 1);
-  
+
   // Check if we're within buffer of the last known position
   const timeSinceLastEvent = targetTime - lastPosEvent.t;
   const isVisible =
