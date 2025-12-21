@@ -1,7 +1,11 @@
 <script lang="ts">
   import clsx from "clsx";
   import { clickOutside } from "../../lib/utils/clickOutside";
-  import { createEventDispatcher } from "svelte";
+  import { createEventDispatcher, getContext, onDestroy } from "svelte";
+  import {
+    sidebarSectionDropdownKey,
+    type SidebarSectionDropdownContext,
+  } from "../../lib/utils/sidebarSectionDropdownContext";
 
   export let isPopupOpen: boolean = false;
   export let extraClasses = "";
@@ -13,6 +17,27 @@
   export let disabled: boolean = false;
 
   const dispatch = createEventDispatcher();
+
+  const dropdownSectionContext = getContext<
+    SidebarSectionDropdownContext | undefined
+  >(sidebarSectionDropdownKey);
+  let hasReportedOpenToSection = false;
+
+  $: if (dropdownSectionContext) {
+    if (isPopupOpen && !hasReportedOpenToSection) {
+      dropdownSectionContext.register();
+      hasReportedOpenToSection = true;
+    } else if (!isPopupOpen && hasReportedOpenToSection) {
+      dropdownSectionContext.unregister();
+      hasReportedOpenToSection = false;
+    }
+  }
+
+  onDestroy(() => {
+    if (dropdownSectionContext && hasReportedOpenToSection) {
+      dropdownSectionContext.unregister();
+    }
+  });
 </script>
 
 <div class="relative action_button h-full group">
@@ -20,9 +45,7 @@
     <div
       class="action_button_popup absolute z-30 w-64 rounded-xl border border-slate-200/70 bg-white/95 shadow-xl backdrop-blur dark:border-slate-800/80 dark:bg-slate-900/95 {showPopupUnder
         ? 'top-10'
-        : 'bottom-20'} {rightAlignPopup
-        ? '-right-2'
-        : '-left-2'}"
+        : 'bottom-20'} {rightAlignPopup ? '-right-2' : '-left-2'}"
       use:clickOutside
       on:outclick={() => dispatch("popupDismiss")}
     >
@@ -46,5 +69,4 @@
   >
     <slot />
   </button>
-
 </div>

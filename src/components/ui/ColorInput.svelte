@@ -44,8 +44,10 @@
   </PopupContainer>
 
   <div class="flex items-center gap-2">
-    <div class="h-6 w-6 rounded border border-slate-300/70 shadow-inner dark:border-slate-700" style="background-color: {value};" />
-    {title}
+    <div class="h-6 w-6 shrink-0 rounded border border-slate-300/70 shadow-inner dark:border-slate-700" style="background-color: {value};" />
+    {#if title}
+      <span class="truncate">{title}</span>
+    {/if}
   </div>
 </ActionButton>
 
