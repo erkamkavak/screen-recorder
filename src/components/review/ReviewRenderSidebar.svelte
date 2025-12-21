@@ -131,8 +131,10 @@
     data: string | null;
     pressedData?: string | null;
   }[] = [];
+  export let removablePointerIconIds: string[] = [];
   export let zipPointerImportMessage: string;
-  export let onZipPointerFileChange: (event: Event) => void;
+  export let onZipPointerFileChange: (event: Event, providerId: string) => void;
+  export let onRemovePointerIconOption: (id: string) => void;
 
   export let isRenderingVideo: boolean;
   export let renderProgress: number;
@@ -236,8 +238,10 @@
       <div class="tab-pane-fade">
         <PointerStyleControls
           {pointerIconOptions}
+          {removablePointerIconIds}
           {zipPointerImportMessage}
           {onZipPointerFileChange}
+          {onRemovePointerIconOption}
         />
       </div>
     {:else if activeTab === 'audio'}

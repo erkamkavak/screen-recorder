@@ -27,7 +27,9 @@
     frameRatePresets,
   } from "../lib/rendering/renderPresets";
   import type { RenderFormat } from "../lib/stores/reviewSession";
-  import { importPointerPackFromZip } from "../lib/pointer/pointerPackImporter";
+  import { importPointerPackFromProvider } from "../lib/pointer/providers";
+  import { addStoredPointerPacks, loadStoredPointerPacks, removeStoredPointerPack } from "../lib/pointer/pointerPackStorage";
+  import type { StoredPointerPack } from "../lib/pointer/pointerPackTypes";
   import {
     saveProject as saveProjectAction,
     continueRecording as continueRecordingAction,
@@ -209,21 +211,23 @@
     },
   ];
 
-  let zipPointerIconOptions: PointerIconOption[] = [];
+  let zipPointerIconOptions: StoredPointerPack[] = loadStoredPointerPacks();
   let pointerIconOptions: PointerIconOption[] = builtinPointerIconOptions;
   let pointerIconOptionMap = new Map<string, PointerIconOption>();
   let zipPointerImportMessage = "";
+  let removablePointerIconIds: string[] = [];
 
-  const handleZipPointerFile = async (event: Event) => {
+  const handleZipPointerFile = async (event: Event, providerId: string) => {
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
     
-    const { options, message } = await importPointerPackFromZip(file, zipPointerIconOptions.length);
+    const { options, packs, message } = await importPointerPackFromProvider(providerId, file);
     
-    if (options.length > 0) {
-      zipPointerIconOptions = [...zipPointerIconOptions, ...options];
-      reviewSessionStore.setPointerIconSelection(options[0].id);
+    if (packs.length > 0) {
+      zipPointerIconOptions = [...zipPointerIconOptions, ...packs];
+      addStoredPointerPacks(packs);
+      reviewSessionStore.setPointerIconSelection(packs[0].id);
     }
     
     zipPointerImportMessage = message;
@@ -233,6 +237,15 @@
   $: pointerIconOptions = [...builtinPointerIconOptions, ...zipPointerIconOptions];
 
   $: pointerIconOptionMap = new Map(pointerIconOptions.map((option) => [option.id, option]));
+  $: removablePointerIconIds = zipPointerIconOptions.map((option) => option.id);
+
+  const removePointerPack = (id: string) => {
+    zipPointerIconOptions = zipPointerIconOptions.filter((option) => option.id !== id);
+    removeStoredPointerPack(id);
+    if ($reviewSessionStore.pointerIconSelection === id) {
+      reviewSessionStore.setPointerIconSelection(builtinPointerIconOptions[0]?.id ?? "");
+    }
+  };
 
   $: {
     const option = pointerIconOptionMap.get($reviewSessionStore.pointerIconSelection);
@@ -366,7 +379,7 @@
 
 </script>
 
-<Review
+  <Review
   bind:playerFrameEl
   lastRecording={$lastRecording}
   assets={$lastRecording?.assets ?? null}
@@ -379,8 +392,10 @@
   timelineDuration={timelineDuration}
   currentSnapshot={currentSnapshot}
   {pointerIconOptions}
+  {removablePointerIconIds}
   zipPointerImportMessage={zipPointerImportMessage}
   onZipPointerFileChange={handleZipPointerFile}
+  onRemovePointerIconOption={removePointerPack}
   pointerIconImageUrl={pointerIconImageUrl}
   pointerIconPressedImageUrl={pointerIconPressedImageUrl}
   bind:videoDuration
@@ -403,4 +418,3 @@
   onContinueRecording={continueRecording}
   onSegmentTrimChange={handleSegmentTrimChange}
 />
-

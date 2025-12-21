@@ -32,8 +32,10 @@
   export let frameRatePresets: readonly { id: string; label: string; fps: number | "original" }[] = [];
   export let renderFormatOptions: RenderFormatOption[] = [];
   export let pointerIconOptions: PointerIconOption[] = [];
+  export let removablePointerIconIds: string[] = [];
   export let zipPointerImportMessage = "";
-  export let onZipPointerFileChange: (event: Event) => void = () => {};
+  export let onZipPointerFileChange: (event: Event, providerId: string) => void = () => {};
+  export let onRemovePointerIconOption: (id: string) => void = () => {};
 
   export let pointerIconImageUrl: string | null = null;
   export let pointerIconPressedImageUrl: string | null = null;
@@ -186,8 +188,10 @@
       {resolutionPresets}
       {frameRatePresets}
       {pointerIconOptions}
+      {removablePointerIconIds}
       {zipPointerImportMessage}
       {onZipPointerFileChange}
+      {onRemovePointerIconOption}
       {isRenderingVideo}
       {renderProgress}
       onRender={downloadEditedVideo}

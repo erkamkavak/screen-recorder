@@ -1,5 +1,3 @@
-import type { PointerIconOption } from "../review/reviewTypes";
-
 export const supportedImageExtensions = new Set(["png", "svg", "webp", "jpg", "jpeg", "gif"]);
 
 export const getExtension = (name: string) => {
@@ -59,8 +57,6 @@ const getDataOffsetForLocalHeader = (buffer: ArrayBuffer, localHeaderOffset: num
 const findEndOfCentralDirectory = (buffer: ArrayBuffer) => {
   const view = new DataView(buffer);
   const total = buffer.byteLength;
-  // EOCD record is at least 22 bytes; the comment field makes it variable-length.
-  // Spec max comment length is 65535, so search the last 22+65535 bytes.
   const maxSearch = Math.min(total, 22 + 0xffff);
   for (let i = total - 22; i >= total - maxSearch; i--) {
     if (i < 0) break;
@@ -117,7 +113,6 @@ export const parseZipEntries = (buffer: ArrayBuffer) => {
     return entries;
   }
 
-  // Fallback: local file headers scan (less compatible; kept for very small/simple zips)
   let offset = 0;
   while (offset + 30 <= total) {
     const signature = view.getUint32(offset, true);
@@ -193,100 +188,11 @@ export const sanitizeIdSegment = (value: string) =>
     .replace(/(^-|-$)/g, "")
     .toLowerCase();
 
-export const importPointerPackFromZip = async (
-  file: File,
-  existingZipCount: number
-): Promise<{ options: PointerIconOption[]; message: string }> => {
-  try {
-    const buffer = await file.arrayBuffer();
-    const entries = parseZipEntries(buffer);
-    if (!entries.length) {
-      return { options: [], message: "No supported pointer images were found inside this zip." };
-    }
-
-    type PackCandidate = {
-      id: string;
-      label: string;
-      cursorEntry?: ZipEntry;
-      pointerEntry?: ZipEntry;
-    };
-
-    const baseFileName = file.name.replace(/\.[^.]+$/, "");
-    const packMap = new Map<string, PackCandidate>();
-
-    const normalizeEntryName = (entryName: string) => entryName.split("/").pop() ?? entryName;
-
-    const buildPackLabel = (name: string) => {
-      const trimmed = name.replace(/\.[^.]+$/, "").replace(/--(cursor|pointer).*/i, "").trim();
-      return trimmed || baseFileName;
-    };
-
-    for (const entry of entries) {
-      if (entry.name.endsWith("/")) continue;
-      const ext = getExtension(entry.name);
-      if (!supportedImageExtensions.has(ext)) continue;
-
-      const cleanedName = normalizeEntryName(entry.name);
-      const label = buildPackLabel(cleanedName);
-      const keyBase = sanitizeIdSegment(label) || sanitizeIdSegment(baseFileName) || `cursor-pack`;
-      const existing = packMap.get(keyBase);
-      const pack: PackCandidate = existing ?? { id: keyBase, label };
-
-      const normalized = cleanedName.toLowerCase();
-      if (normalized.includes("pointer")) {
-        pack.pointerEntry = pack.pointerEntry ?? entry;
-      } else {
-        pack.cursorEntry = pack.cursorEntry ?? entry;
-      }
-      packMap.set(keyBase, pack);
-    }
-
-    if (!packMap.size) {
-      return { options: [], message: "No supported pointer images were found inside this zip." };
-    }
-
-    const loadedOptions: PointerIconOption[] = [];
-    let packIndex = 0;
-
-    for (const pack of packMap.values()) {
-      const cursorEntry = pack.cursorEntry ?? pack.pointerEntry;
-      if (!cursorEntry) continue;
-      const cursorMime = getMimeTypeForExtension(getExtension(cursorEntry.name));
-      if (!cursorMime) continue;
-
-      const cursorData = await decompressZipEntry(cursorEntry, buffer);
-      const cursorBase64 = arrayBufferToBase64(cursorData);
-      const cursorDataUrl = `data:${cursorMime};base64,${cursorBase64}`;
-
-      let pressedDataUrl = cursorDataUrl;
-      if (pack.pointerEntry) {
-        const pointerMime = getMimeTypeForExtension(getExtension(pack.pointerEntry.name));
-        if (pointerMime) {
-          const pointerData = await decompressZipEntry(pack.pointerEntry, buffer);
-          const pointerBase64 = arrayBufferToBase64(pointerData);
-          pressedDataUrl = `data:${pointerMime};base64,${pointerBase64}`;
-        }
-      }
-
-      const optionIdBase = sanitizeIdSegment(`${pack.label}-${file.name}`) || `cursor-pack-${packIndex}`;
-      loadedOptions.push({
-        id: `${optionIdBase}-${existingZipCount + packIndex}`,
-        label: pack.label,
-        data: `url("${cursorDataUrl}")`,
-        pressedData: `url("${pressedDataUrl}")`,
-      });
-      packIndex += 1;
-    }
-
-    return {
-      options: loadedOptions,
-      message:
-        loadedOptions.length > 0
-          ? `Imported ${loadedOptions.length} pack${loadedOptions.length === 1 ? "" : "s"} from ${file.name}.`
-          : "No supported pointer images were found inside this zip.",
-    };
-  } catch (error) {
-    console.error("Failed to import pointer pack", error);
-    return { options: [], message: "Unable to extract pointer images from this zip file." };
-  }
+export const createPointerPackId = (base: string) => {
+  const cleanBase = sanitizeIdSegment(base) || "cursor-pack";
+  const randomId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${cleanBase}-${randomId}`;
 };
