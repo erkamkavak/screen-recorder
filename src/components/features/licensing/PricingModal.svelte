@@ -22,6 +22,11 @@
   const CHECKOUT_URL = import.meta.env.VITE_POLAR_CHECKOUT_URL;
 
   const subscribe = () => {
+    if (!CHECKOUT_URL) {
+      console.error("VITE_POLAR_CHECKOUT_URL is not configured");
+      activationError = "Checkout is not available. Please contact support.";
+      return;
+    }
     const api = window.electronAPI;
     if (api && typeof api.openExternal === "function") {
       api.openExternal(CHECKOUT_URL);

@@ -127,16 +127,16 @@ const createTimelineStore = () => {
           current.map((event) =>
             event.id === eventId
               ? {
-                  ...event,
-                  ...patch,
-                  startTime: patch.startTime ?? event.startTime,
-                  duration: clampDuration(patch.duration ?? event.duration),
-                  focusX: patch.focusX ?? event.focusX,
-                  focusY: patch.focusY ?? event.focusY,
-                  zoom: patch.zoom ?? event.zoom,
-                  easing: patch.easing ?? event.easing,
-                  label: patch.label ?? event.label,
-                }
+                ...event,
+                ...patch,
+                startTime: patch.startTime ?? event.startTime,
+                duration: clampDuration(patch.duration ?? event.duration),
+                focusX: patch.focusX ?? event.focusX,
+                focusY: patch.focusY ?? event.focusY,
+                zoom: patch.zoom ?? event.zoom,
+                easing: patch.easing ?? event.easing,
+                label: patch.label ?? event.label,
+              }
               : event
           )
         );
@@ -210,9 +210,13 @@ const createTimelineStore = () => {
     },
 
     snapshot: () => {
-      let current: TimelineSnapshot = cloneSnapshot(initialSnapshot());
+      let current: TimelineSnapshot = initialSnapshot();
       update((state) => {
-        current = cloneSnapshot({ segmentEvents: state.segmentEvents ?? {} });
+        current = {
+          segmentEvents: cloneSegmentEvents(state.segmentEvents ?? {}),
+          trimStart: state.trimStart,
+          trimEnd: state.trimEnd,
+        };
         return state;
       });
       return current;
