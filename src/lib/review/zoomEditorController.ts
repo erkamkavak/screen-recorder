@@ -81,7 +81,8 @@ export const createZoomEditorController = (options: ZoomEditorControllerOptions)
     if (!zoomDraft) return;
     const info = findSegmentForTime(options.getSegments(), options.getCurrentTime());
     if (info && info.segmentId === zoomDraft.segmentId) {
-      const duration = Math.max(0.1, info.localTime - zoomDraft.startTime + ZOOM_DEFAULT_DURATION / 2);
+      // Add a small padding (0.5s) to account for the zoom-out transition
+      const duration = Math.max(0.1, info.localTime - zoomDraft.startTime + 0.5);
       timelineStore.updateZoom(zoomDraft.segmentId, zoomDraft.eventId, { duration });
     }
     zoomDraft = null;
@@ -154,14 +155,14 @@ export const createZoomEditorController = (options: ZoomEditorControllerOptions)
     if (!frameEl || document.fullscreenElement) return;
     try {
       await frameEl.requestFullscreen();
-    } catch {}
+    } catch { }
   };
 
   const exitFullscreen = async () => {
     if (!document.fullscreenElement) return;
     try {
       await document.exitFullscreen();
-    } catch {}
+    } catch { }
   };
 
   const handleFullscreenChange = () => {
@@ -197,7 +198,8 @@ export const createZoomEditorController = (options: ZoomEditorControllerOptions)
     if (!zoomDraft) return;
     const info = findSegmentForTime(options.getSegments(), currentTimeSec);
     if (info && info.segmentId === zoomDraft.segmentId) {
-      const duration = Math.max(0.1, info.localTime - zoomDraft.startTime + ZOOM_DEFAULT_DURATION);
+      // While recording, keep the duration just ahead of current time + extra padding for visualization
+      const duration = Math.max(0.1, info.localTime - zoomDraft.startTime + 1.0);
       timelineStore.updateZoom(zoomDraft.segmentId, zoomDraft.eventId, { duration });
     }
   };

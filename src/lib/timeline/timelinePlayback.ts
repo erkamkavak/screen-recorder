@@ -60,14 +60,18 @@ export const computeZoomScale = (event: TimelineZoomEvent, currentTime: number):
   const zoomDelta = event.zoom - 1;
   if (zoomDelta <= 0) return 1;
 
-  const RAMP_FRACTION = 0.25;
   const easeInOutSine = (t: number) => 0.5 * (1 - Math.cos(Math.PI * t));
 
-  const rampStart = RAMP_FRACTION;
-  const rampEnd = 1 - RAMP_FRACTION;
+  // Use a fixed ramp time (0.5s) instead of a fixed fraction (0.25)
+  // This ensures consistent transition speed regardless of zoom duration
+  const RAMP_TIME = 0.5;
+  const rampFraction = Math.min(0.25, RAMP_TIME / duration);
+
+  const rampStart = rampFraction;
+  const rampEnd = 1 - rampFraction;
 
   if (progress <= rampStart) {
-    const rampProgress = progress / RAMP_FRACTION;
+    const rampProgress = progress / rampStart;
     const eased = easeInOutSine(Math.min(Math.max(rampProgress, 0), 1));
     return 1 + eased * zoomDelta;
   }
@@ -76,7 +80,7 @@ export const computeZoomScale = (event: TimelineZoomEvent, currentTime: number):
     return 1 + zoomDelta;
   }
 
-  const rampProgress = (progress - rampEnd) / RAMP_FRACTION;
+  const rampProgress = (progress - rampEnd) / rampFraction;
   const eased = easeInOutSine(Math.min(Math.max(rampProgress, 0), 1));
   return 1 + (1 - eased) * zoomDelta;
 };
