@@ -1,10 +1,10 @@
 {
-  "name": "clips",
+  "name": "clipflow",
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Screen recording application for capturing video, audio, and input events",
-  "author": "Formidable Labs <hello@formidable.com> | erkamkavak",
+  "description": "Clip Flow - High-fidelity screen recording and editing studio",
+  "author": "erkamkavak",
   "license": "MIT",
   "scripts": {
     "dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 concurrently \"pnpm:dev:renderer\" \"pnpm:dev:electron\"",
@@ -46,6 +46,7 @@
   "dependencies": {
     "@apsc/color": "^0.0.5",
     "clsx": "^2.0.0",
+    "electron-updater": "^6.6.2",
     "fix-webm-duration": "^1.0.5",
     "locally-unique-id-generator": "^0.1.5",
     "mediabunny": "^1.25.7",
@@ -57,9 +58,16 @@
   },
   "main": "electron/main.cjs",
   "build": {
-    "afterPack": "electron/fix-chrome-sandbox.cjs",
-    "appId": "com.formidable.clips",
-    "productName": "Clips",
+    "icon": "resources/icon.svg",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "erkamkavak",
+        "repo": "screen-recorder"
+      }
+    ],
+    "appId": "com.dantes.clipflow",
+    "productName": "ClipFlow",
     "directories": {
       "output": "dist-electron"
     },
@@ -75,7 +83,7 @@
     "extraResources": [
       {
         "from": "resources",
-        "to": "resources"
+        "to": "."
       }
     ],
     "linux": {
@@ -88,17 +96,17 @@
           ]
         }
       ],
+      "icon": "resources/icon.svg",
       "category": "AudioVideo",
+      "executableName": "ClipFlow",
       "desktop": {
         "entry": {
-          "Name": "Clips",
+          "Name": "ClipFlow",
           "Comment": "Screen recording application",
           "Keywords": "screen;record;video;"
         }
       },
-      "executableArgs": [
-        "--no-sandbox"
-      ]
+      "artifactName": "${productName}-${arch}.${ext}"
     },
     "win": {
       "target": [
@@ -115,7 +123,8 @@
           ]
         }
       ],
-      "icon": "resources/icon.ico"
+      "icon": "resources/icon.svg",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "mac": {
       "target": [
@@ -135,7 +144,8 @@
         }
       ],
       "category": "public.app-category.productivity",
-      "icon": "resources/icon.icns"
+      "icon": "resources/icon.svg",
+      "artifactName": "${productName}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,

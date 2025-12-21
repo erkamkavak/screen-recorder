@@ -33,7 +33,7 @@ const getProjectsDir = () => {
   if (config.projectsDir) {
     return config.projectsDir;
   }
-  return path.join(app.getPath("documents"), "Clips", "projects");
+  return path.join(app.getPath("documents"), "Clip Flow", "projects");
 };
 
 const setProjectsDir = (dirPath) => {

@@ -8,9 +8,11 @@ const {
   protocol,
   dialog,
 } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+app.name = "ClipFlow";
 const { Blob } = require("buffer");
 const fixWebmDuration = require("fix-webm-duration");
 const { uIOhook } = require("uiohook-napi");
@@ -30,7 +32,6 @@ try {
 
 if (process.platform === "linux") {
   app.commandLine.appendSwitch("enable-features", "WebRTCPipeWireCapturer");
-  app.commandLine.appendSwitch("no-sandbox");
 }
 
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL;
@@ -50,7 +51,12 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
+    icon: isDev 
+      ? path.join(__dirname, "..", "resources", "icon.svg")
+      : path.join(process.resourcesPath, "icon.svg"),
+    title: "ClipFlow",
   });
+  mainWindow.setTitle("ClipFlow");
 
 
   if (isDev && VITE_DEV_SERVER_URL) {
@@ -63,6 +69,37 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, "..", "dist", "index.html"));
     mainWindow.once("ready-to-show", () => mainWindow.show());
   }
+}
+
+/**
+ * Set up the auto-updater to check for releases on GitHub.
+ */
+function setupAutoUpdater() {
+  if (isDev) return;
+
+  autoUpdater.on("update-available", (info) => {
+    if (mainWindow) {
+      mainWindow.webContents.send("update:available", info);
+    }
+  });
+
+  autoUpdater.on("download-progress", (progress) => {
+    if (mainWindow) {
+      mainWindow.webContents.send("update:progress", progress);
+    }
+  });
+
+  autoUpdater.on("update-downloaded", (info) => {
+    if (mainWindow) {
+      mainWindow.webContents.send("update:downloaded", info);
+    }
+  });
+
+  autoUpdater.on("error", (err) => {
+    console.error("Auto-updater error:", err);
+  });
+
+  autoUpdater.checkForUpdatesAndNotify();
 }
 
 let isCapturingInput = false;
@@ -615,6 +652,12 @@ app.whenReady().then(() => {
       throw error;
     }
   });
+
+  ipcMain.on("update:install", () => {
+    autoUpdater.quitAndInstall();
+  });
+
+  setupAutoUpdater();
 
   createWindow();
 

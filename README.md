@@ -1,5 +1,6 @@
+# Clip Flow
+ 
 # About this project
-
 This project is built on top of the open-source repository [clips](https://github.com/FormidableLabs/clips). It preserves the original goals while adding more control over recording, camera, microphone, and post-processing.
 
 The app has been converted from a pure web app to an Electron app to enable more reliable global mouse/keyboard event tracking during recording and now uses a native Rust backend for desktop capture and recording.
