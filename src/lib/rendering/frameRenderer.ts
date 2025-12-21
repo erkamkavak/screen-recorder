@@ -101,9 +101,8 @@ export const renderFrameContent = (
 
     // Clear and draw background first
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    background.draw(drawArgs);
-
     ctx.imageSmoothingQuality = "high";
+    background.draw(drawArgs);
     ctx.globalCompositeOperation = "source-over";
 
     // Apply zoom transform
