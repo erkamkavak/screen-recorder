@@ -197,7 +197,7 @@ export const createZoomEditorController = (options: ZoomEditorControllerOptions)
     if (!zoomDraft) return;
     const info = findSegmentForTime(options.getSegments(), currentTimeSec);
     if (info && info.segmentId === zoomDraft.segmentId) {
-      const duration = Math.max(0.1, info.localTime - zoomDraft.startTime + ZOOM_DEFAULT_DURATION / 2);
+      const duration = Math.max(0.1, info.localTime - zoomDraft.startTime + ZOOM_DEFAULT_DURATION);
       timelineStore.updateZoom(zoomDraft.segmentId, zoomDraft.eventId, { duration });
     }
   };
