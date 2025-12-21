@@ -99,8 +99,10 @@ export const renderFrameContent = (
     // Calculate zoom state from timeline events
     const { scale, focusX, focusY } = computeZoomState(config.zoomEvents, currentTime);
 
-    // Clear and prepare canvas
+    // Clear and draw background first
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+    background.draw(drawArgs);
+
     ctx.imageSmoothingQuality = "high";
     ctx.globalCompositeOperation = "source-over";
 
@@ -173,11 +175,6 @@ export const renderFrameContent = (
             });
         }
     }
-
-    // Background behind everything
-    ctx.globalCompositeOperation = "destination-over";
-    background.draw(drawArgs);
-    ctx.globalCompositeOperation = "source-over";
 };
 
 /**
