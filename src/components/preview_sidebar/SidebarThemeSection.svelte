@@ -1,7 +1,12 @@
 <script lang="ts">
   import SidebarSection from "./SidebarSection.svelte";
   import { slide, fade } from "svelte/transition";
-  import { activeTheme, customTheme, themes } from "../../lib/stores";
+  import {
+    activeTheme,
+    customTheme,
+    themes,
+    userThemes,
+  } from "../../lib/stores";
   import type { Theme } from "../../lib/stores";
   import {
     activeBackground,
@@ -23,6 +28,13 @@
       secondaryColor: theme.secondary,
       accentColor: theme.accent,
     })),
+    ...$userThemes.map((theme) => ({
+      title: theme.title,
+      value: theme,
+      primaryColor: theme.primary,
+      secondaryColor: theme.secondary,
+      accentColor: theme.accent,
+    })),
     {
       title: "Custom",
       value: $customTheme,
@@ -38,6 +50,22 @@
       $activeTheme = $customTheme;
     } else {
       $activeTheme = selected;
+    }
+  };
+
+  const saveCustomTheme = () => {
+    const newTheme: Theme = {
+      ...$customTheme,
+      title: `Saved Theme ${$userThemes.length + 1}`,
+    };
+    userThemes.update((current) => [...current, newTheme]);
+    $activeTheme = newTheme;
+  };
+
+  const deleteUserTheme = (title: string) => {
+    userThemes.update((current) => current.filter((t) => t.title !== title));
+    if ($activeTheme.title === title) {
+      $activeTheme = themes[0];
     }
   };
 
@@ -119,35 +147,51 @@
       </span>
       <div class="grid grid-cols-5 gap-2">
         {#each themeOptions as option}
+          {@const isUserTheme = $userThemes.some(
+            (t) => t.title === option.title
+          )}
           {@const isActive =
             $activeTheme.title === option.value.title ||
             (option.title === "Custom" && isCustomActive)}
-          <button
-            type="button"
-            class="group relative aspect-square rounded-lg border p-1 transition-all hover:scale-105 active:scale-95 {isActive
-              ? 'border-blue-500 bg-blue-50/50 shadow-sm dark:border-blue-400 dark:bg-blue-900/20'
-              : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'}"
-            on:click={() => handleThemeChange(option.value)}
-            title={option.title}
-          >
-            <div
-              class="h-full w-full rounded-md shadow-inner"
-              style={`background: linear-gradient(135deg, ${option.primaryColor}, ${option.secondaryColor});`}
+          <div class="group relative">
+            <button
+              type="button"
+              class="relative aspect-square w-full rounded-lg border p-1 transition-all hover:scale-105 active:scale-95 {isActive
+                ? 'border-blue-500 bg-blue-50/50 shadow-sm dark:border-blue-400 dark:bg-blue-900/20'
+                : 'border-slate-200 bg-white hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:hover:border-slate-700'}"
+              on:click={() => handleThemeChange(option.value)}
+              title={option.title}
             >
               <div
-                class="absolute bottom-[4px] right-[4px] h-2 w-2 rounded-full border border-white shadow-sm dark:border-slate-900"
-                style={`background: ${option.accentColor};`}
-              />
-            </div>
-
-            {#if option.title === "Custom"}
-              <div
-                class="absolute -top-1.5 -right-1 flex items-center justify-center rounded-full bg-blue-500 px-1 py-0.5 text-[7px] font-bold text-white shadow-sm transition-transform group-hover:scale-110"
+                class="h-full w-full rounded-md shadow-inner"
+                style={`background: linear-gradient(135deg, ${option.primaryColor}, ${option.secondaryColor});`}
               >
-                CUSTOM
+                <div
+                  class="absolute bottom-[4px] right-[4px] h-2 w-2 rounded-full border border-white shadow-sm dark:border-slate-900"
+                  style={`background: ${option.accentColor};`}
+                />
               </div>
+
+              {#if option.title === "Custom"}
+                <div
+                  class="absolute -top-1.5 -right-1 flex items-center justify-center rounded-full bg-blue-500 px-1 py-0.5 text-[7px] font-bold text-white shadow-sm transition-transform group-hover:scale-110"
+                >
+                  CUSTOM
+                </div>
+              {/if}
+            </button>
+
+            {#if isUserTheme}
+              <button
+                type="button"
+                class="absolute -top-1 -right-1 hidden h-4 w-4 items-center justify-center rounded-full bg-rose-500 text-[10px] text-white shadow-md hover:bg-rose-600 group-hover:flex"
+                on:click|stopPropagation={() => deleteUserTheme(option.title)}
+                title="Delete theme"
+              >
+                ×
+              </button>
             {/if}
-          </button>
+          </div>
         {/each}
       </div>
     </div>
@@ -157,11 +201,20 @@
         class="rounded-xl border border-slate-200/60 bg-slate-50/50 p-3 dark:border-slate-700/50 dark:bg-slate-800/30"
         transition:slide={{ duration: 200 }}
       >
-        <p
-          class="mb-2.5 text-[9px] font-bold uppercase tracking-wider text-slate-400"
-        >
-          Edit Palette
-        </p>
+        <div class="mb-2.5 flex items-center justify-between">
+          <p
+            class="text-[9px] font-bold uppercase tracking-wider text-slate-400"
+          >
+            Edit Palette
+          </p>
+          <button
+            type="button"
+            class="text-[9px] font-bold uppercase tracking-wider text-blue-500 hover:text-blue-600 dark:text-blue-400"
+            on:click={saveCustomTheme}
+          >
+            Save as Preset
+          </button>
+        </div>
         <div class="grid grid-cols-3 gap-2">
           <div class="flex flex-col gap-1">
             <span

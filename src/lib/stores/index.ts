@@ -327,12 +327,29 @@ export const themes: Theme[] = [
   },
 ];
 
+export const userThemes = (() => {
+  const stored = localStorage.getItem("userThemes");
+  const init = stored ? JSON.parse(stored) : [];
+  const store = writable<Theme[]>(init);
+
+  store.subscribe((themes) => {
+    localStorage.setItem("userThemes", JSON.stringify(themes));
+  });
+
+  return store;
+})();
+
 export const activeTheme = (() => {
   const initThemeTitle = localStorage.getItem("theme");
-  const initTheme =
-    themes.find((theme) => theme.title === initThemeTitle) || themes[0];
-  const store = writable<Theme>(initTheme);
+  const storedUserThemes = JSON.parse(localStorage.getItem("userThemes") || "[]");
 
+  const initTheme =
+    themes.find((t) => t.title === initThemeTitle) ||
+    storedUserThemes.find((t: Theme) => t.title === initThemeTitle) ||
+    (initThemeTitle === "customTheme" ? JSON.parse(localStorage.getItem("customTheme") || "null") : null) ||
+    themes[0];
+
+  const store = writable<Theme>(initTheme);
   const _set = store.set;
 
   store.set = (theme) => {
@@ -345,21 +362,18 @@ export const activeTheme = (() => {
 
 export const customTheme = (() => {
   const initCustomTheme = JSON.parse(localStorage.getItem("customTheme")) || {
-    ...(themes.find((theme) => theme.title === localStorage.getItem("theme")) ||
-      themes[0]),
+    ...themes[0],
+    title: "customTheme"
   };
 
   const store = writable<Theme>(initCustomTheme);
-
   const _set = store.set;
 
   store.set = (theme) => {
-    localStorage.setItem(
-      "customTheme",
-      JSON.stringify({ ...theme, title: "customTheme" })
-    );
-    _set(theme);
-    activeTheme.set(theme);
+    const themeWithTitle = { ...theme, title: "customTheme" };
+    localStorage.setItem("customTheme", JSON.stringify(themeWithTitle));
+    _set(themeWithTitle);
+    activeTheme.set(themeWithTitle);
   };
   return store;
 })();
