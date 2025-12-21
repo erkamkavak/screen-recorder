@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer, shell } = require("electron");
+const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("electronAPI", {
   on: (channel, listener) => {
@@ -85,5 +85,6 @@ contextBridge.exposeInMainWorld("electronAPI", {
   showRecorderOverlay: () => ipcRenderer.send("recorder:show-overlay"),
   hideRecorderOverlay: () => ipcRenderer.send("recorder:hide-overlay"),
   syncRecorderState: (state) => ipcRenderer.send("recorder:sync-state", state),
-  openExternal: (url) => shell.openExternal(url),
+  openExternal: (url) => ipcRenderer.send("shell:open-external", url),
+  getMachineName: () => ipcRenderer.invoke("os:get-hostname"),
 });

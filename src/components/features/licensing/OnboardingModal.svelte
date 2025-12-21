@@ -1,6 +1,6 @@
 <script lang="ts">
   import { fade, scale, fly } from "svelte/transition";
-  import { hasSeenOnboarding } from "../../../lib/stores/license";
+  import { hasSeenOnboarding, licenseStore } from "../../../lib/stores/license";
   import { backOut } from "svelte/easing";
   import logo from "../../../assets/logo.svg";
 
@@ -9,36 +9,49 @@
       id: "capture",
       title: "Pro Capture",
       desc: "Record up to 4K resolution at 60fps with zero lag.",
-      bg: "bg-emerald-50 dark:bg-emerald-500/10",
       color: "text-emerald-600 dark:text-emerald-400",
     },
     {
       id: "style",
       title: "Signature Style",
       desc: "Customize themes, backgrounds, and camera overlays.",
-      bg: "bg-indigo-50 dark:bg-indigo-500/10",
       color: "text-indigo-600 dark:text-indigo-400",
     },
     {
       id: "editor",
       title: "Powerful Editor",
       desc: "Precision trimming and advanced multi-track timeline.",
-      bg: "bg-rose-50 dark:bg-rose-500/10",
       color: "text-rose-600 dark:text-rose-400",
     },
     {
       id: "zoom",
       title: "Smart Auto-Zoom",
       desc: "Follow your click events with smooth, automated zooms.",
-      bg: "bg-sky-50 dark:bg-sky-500/10",
       color: "text-sky-600 dark:text-sky-400",
     },
   ];
 
   let showInfo = false;
+  let showLicenseInput = false;
+  let licenseKeyInput = "";
+  let isActivating = false;
+  let activationError = "";
 
   const start = () => {
     hasSeenOnboarding.complete();
+  };
+
+  const handleActivate = async () => {
+    if (!licenseKeyInput.trim()) return;
+    isActivating = true;
+    activationError = "";
+    const result = await licenseStore.activateWithPolar(licenseKeyInput.trim());
+    isActivating = false;
+    if (result.success) {
+      start();
+    } else {
+      activationError = result.error || "Failed to activate";
+    }
   };
 
   const openGitHub = (e: MouseEvent) => {
@@ -100,7 +113,7 @@
             transition:fly={{ y: 20, duration: 600, delay: 400 + i * 100 }}
           >
             <div
-              class={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl shadow-sm transition-all group-hover:scale-110 ${feature.bg}`}
+              class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm ring-1 ring-slate-100 transition-all group-hover:scale-110 dark:bg-slate-800 dark:ring-slate-700"
             >
               {#if feature.id === "capture"}
                 <svg
@@ -136,18 +149,14 @@
                 </svg>
               {:else if feature.id === "editor"}
                 <svg
-                  viewBox="0 0 24 24"
+                  viewBox="0 0 256 256"
                   width="22"
                   height="22"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="1.8"
+                  fill="currentColor"
                   class={feature.color}
                 >
                   <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a1 1 0 011 1v2a1 1 0 01-1 1h-1a2 2 0 100 4h1a1 1 0 011 1v2a1 1 0 01-1 1h-3a1 1 0 00-1 1v1a2 2 0 11-4 0v-1a1 1 0 00-1-1H7a1 1 0 01-1-1v-2a1 1 0 011-1h1a2 2 0 100-4H7a1 1 0 01-1-1V7a1 1 0 011-1h3a1 1 0 001-1V4z"
+                    d="M157.73193,113.13086a8.00047,8.00047,0,0,1,2.085-11.12012l67.66553-46.29785A8.00013,8.00013,0,0,1,236.51758,68.918l-67.66553,46.29785a7.99794,7.99794,0,0,1-11.12012-2.085Zm80.87061,85.07129a7.99794,7.99794,0,0,1-11.12012,2.085l-91.4826-62.59351L93.49408,166.77686a36.034,36.034,0,1,1-9.05035-13.19458l37.38867-25.582-37.3891-25.582a35.84637,35.84637,0,1,1,9.0506-13.19458L236.51758,187.082A8.00047,8.00047,0,0,1,238.60254,198.20215ZM80,180a20,20,0,1,0-5.85791,14.1416A19.86692,19.86692,0,0,0,80,180ZM74.14209,90.1416a20,20,0,1,0-28.28418,0A19.86692,19.86692,0,0,0,74.14209,90.1416Z"
                   />
                 </svg>
               {:else if feature.id === "zoom"}
@@ -215,7 +224,7 @@
         </div>
       </button>
 
-      <div class="mt-8 flex flex-col items-center gap-2">
+      <div class="mt-8 flex flex-col items-center gap-2 w-full">
         <p class="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
           No subscription. One-time payment. Lifetime updates.
         </p>
@@ -225,24 +234,76 @@
           Your first video export is free
         </p>
 
-        <button
-          class="mt-2 flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:bg-slate-100 hover:text-emerald-600 transition-all dark:hover:bg-slate-800"
-          on:click={() => (showInfo = !showInfo)}
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="18"
-            height="18"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2.5"
+        <div class="flex flex-col items-center gap-3 mt-4 w-full">
+          {#if !showLicenseInput}
+            <button
+              on:click={() => (showLicenseInput = true)}
+              class="text-xs font-bold text-emerald-600 hover:text-emerald-700 uppercase tracking-wider"
+            >
+              Have a license? Activate here
+            </button>
+          {:else}
+            <div
+              class="w-full max-w-sm space-y-3"
+              transition:scale={{ duration: 200, start: 0.98 }}
+            >
+              <div class="relative">
+                <input
+                  type="text"
+                  bind:value={licenseKeyInput}
+                  placeholder="Enter License Key"
+                  class="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs font-medium focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 dark:border-slate-700 dark:bg-slate-800 dark:text-white"
+                />
+                {#if isActivating}
+                  <div
+                    class="absolute right-3 top-2.5 h-4 w-4 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent"
+                  />
+                {/if}
+              </div>
+
+              {#if activationError}
+                <p class="text-[10px] font-bold text-rose-500">
+                  {activationError}
+                </p>
+              {/if}
+
+              <div class="flex gap-2">
+                <button
+                  on:click={handleActivate}
+                  disabled={isActivating || !licenseKeyInput.trim()}
+                  class="flex-1 rounded-xl bg-emerald-600 py-2 text-xs font-bold text-white transition-all hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  Activate
+                </button>
+                <button
+                  on:click={() => (showLicenseInput = false)}
+                  class="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-500 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-400 dark:hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          {/if}
+
+          <button
+            class="flex items-center gap-2 rounded-full px-4 py-2 text-xs font-bold uppercase tracking-wider text-slate-400 hover:bg-slate-100 hover:text-emerald-600 transition-all dark:hover:bg-slate-800"
+            on:click={() => (showInfo = !showInfo)}
           >
-            <circle cx="12" cy="12" r="10" />
-            <path d="M12 16v-4" stroke-linecap="round" />
-            <path d="M12 8h.01" stroke-linecap="round" />
-          </svg>
-          Why not free?
-        </button>
+            <svg
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2.5"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 17v-4" stroke-linecap="round" />
+              <path d="M12 8v1" stroke-linecap="round" />
+            </svg>
+            Why not free?
+          </button>
+        </div>
 
         {#if showInfo}
           <div

@@ -25,3 +25,5 @@ dist-electron
 *.sw?
 
 target/
+
+.env

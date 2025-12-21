@@ -7,6 +7,7 @@ const {
   Menu,
   protocol,
   dialog,
+  shell,
 } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const fs = require("fs");
@@ -190,6 +191,9 @@ const stopInputCapture = () => {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  
+  ipcMain.handle("os:get-hostname", () => os.hostname());
+  ipcMain.on("shell:open-external", (_event, url) => shell.openExternal(url));
 
   const ensureRecordingDir = () => {
     const storageDir = path.join(app.getPath("temp"), "clips-recordings");

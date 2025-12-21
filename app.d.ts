@@ -151,6 +151,7 @@ declare global {
     hideRecorderOverlay: () => void;
     syncRecorderState: (state: { isRecording: boolean; startTime?: number | null }) => void;
     openExternal: (url: string) => void;
+    getMachineName: () => Promise<string>;
   }
 
   interface RecordingSegment {

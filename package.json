@@ -45,6 +45,7 @@
   },
   "dependencies": {
     "@apsc/color": "^0.0.5",
+    "@polar-sh/sdk": "^0.42.1",
     "clsx": "^2.0.0",
     "electron-updater": "^6.6.2",
     "fix-webm-duration": "^1.0.5",
