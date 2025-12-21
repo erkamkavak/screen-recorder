@@ -15,6 +15,9 @@
   import RecorderSidebar from "./components/RecorderSidebar.svelte";
   import ProjectsList from "./components/features/projects/ProjectsList.svelte";
   import NotesOverlay from "./components/features/notes/NotesOverlay.svelte";
+  import OnboardingModal from "./components/features/licensing/OnboardingModal.svelte";
+  import { hasSeenOnboarding } from "./lib/stores/license";
+  import UpdaterNotification from "./components/features/updates/UpdaterNotification.svelte";
   import {
     createRecordingController,
     type RecordingController,
@@ -23,6 +26,7 @@
   import { backendAPI } from "./lib/backend/backendAPI";
   import { patchBlob } from "./lib/utils/blobHelpers";
   import { getPreferredMimeType } from "./lib/utils/getPreferredMimeType";
+  import logo from "./assets/logo.svg";
 
   const recordingController: RecordingController = createRecordingController({
     stores: {
@@ -114,8 +118,15 @@
       <div class="flex min-w-0 flex-col gap-4">
         <div class="flex items-center justify-between px-1">
           <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2 mr-4">
+              <img src={logo} alt="Clip Flow" class="h-8 w-8" />
+              <span
+                class="text-lg font-black tracking-tight text-slate-900 dark:text-white"
+                >Clip Flow</span
+              >
+            </div>
             <h2
-              class="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400"
+              class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500 pt-1"
             >
               Live Preview
             </h2>
@@ -213,4 +224,9 @@
   {/if}
 
   <NotesOverlay />
+  <UpdaterNotification />
+
+  {#if !$hasSeenOnboarding}
+    <OnboardingModal />
+  {/if}
 </div>

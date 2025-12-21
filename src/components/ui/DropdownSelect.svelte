@@ -21,10 +21,12 @@
   export let placeholder = "Select";
   export let isDisabled = false;
 
-  const dispatch = createEventDispatcher<{ select: { value: unknown } }>();
-  const dropdownSectionContext = getContext<SidebarSectionDropdownContext | undefined>(
-    sidebarSectionDropdownKey
-  );
+  const dispatch = createEventDispatcher<{
+    select: { value: unknown };
+  }>();
+  const dropdownSectionContext = getContext<
+    SidebarSectionDropdownContext | undefined
+  >(sidebarSectionDropdownKey);
   let hasReportedOpenToSection = false;
 
   $: if (dropdownSectionContext) {
@@ -45,7 +47,9 @@
 
   let isOpen = false;
   let dropdownButton: HTMLButtonElement;
-  const buttonId = `${(name || "dropdown").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-trigger`;
+  const buttonId = `${(name || "dropdown")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")}-trigger`;
 
   $: selectedOption = options.find((option) => option.value === value);
 
@@ -101,9 +105,14 @@
         {#if selectedOption && (selectedOption.primaryColor || selectedOption.secondaryColor || selectedOption.accentColor)}
           <span
             class="h-4 w-4 rounded-md border border-slate-200/80 shadow-sm dark:border-slate-700/70"
-            style={`background: ${selectedOption.primaryColor && selectedOption.secondaryColor
-              ? `linear-gradient(135deg, ${selectedOption.primaryColor}, ${selectedOption.secondaryColor})`
-              : selectedOption.primaryColor || selectedOption.secondaryColor || selectedOption.accentColor || "transparent"};`}
+            style={`background: ${
+              selectedOption.primaryColor && selectedOption.secondaryColor
+                ? `linear-gradient(135deg, ${selectedOption.primaryColor}, ${selectedOption.secondaryColor})`
+                : selectedOption.primaryColor ||
+                  selectedOption.secondaryColor ||
+                  selectedOption.accentColor ||
+                  "transparent"
+            };`}
           />
         {/if}
         <span>{selectedOption ? selectedOption.title : placeholder}</span>
@@ -132,7 +141,9 @@
         transition:fade={{ duration: 120 }}
         on:keydown={handleKeydown}
       >
-        <ul class="max-h-56 overflow-y-auto py-2 text-sm text-slate-600 dark:text-slate-200">
+        <ul
+          class="max-h-56 overflow-y-auto py-2 text-sm text-slate-600 dark:text-slate-200"
+        >
           {#each options as option (option.title)}
             <li>
               <button
@@ -144,15 +155,23 @@
                 {#if option.primaryColor || option.secondaryColor || option.accentColor}
                   <span
                     class="h-5 w-5 flex-shrink-0 rounded-md border border-slate-200/80 shadow-sm dark:border-slate-700/70"
-                    style={`background: ${option.primaryColor && option.secondaryColor
-                      ? `linear-gradient(135deg, ${option.primaryColor}, ${option.secondaryColor})`
-                      : option.primaryColor || option.secondaryColor || option.accentColor || "transparent"};`}
+                    style={`background: ${
+                      option.primaryColor && option.secondaryColor
+                        ? `linear-gradient(135deg, ${option.primaryColor}, ${option.secondaryColor})`
+                        : option.primaryColor ||
+                          option.secondaryColor ||
+                          option.accentColor ||
+                          "transparent"
+                    };`}
                   />
                 {/if}
                 <span class="flex min-w-0 flex-col gap-0.5">
                   <span class="truncate font-medium">{option.title}</span>
                   {#if option.description}
-                    <span class="truncate text-xs text-slate-400 dark:text-slate-500">{option.description}</span>
+                    <span
+                      class="truncate text-xs text-slate-400 dark:text-slate-500"
+                      >{option.description}</span
+                    >
                   {/if}
                 </span>
               </button>

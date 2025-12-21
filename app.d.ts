@@ -142,13 +142,15 @@ declare global {
     getProjectsDir: () => Promise<string>;
     changeProjectsDir: () => Promise<string | null>;
 
-    // Generic IPC listener
+    // Generic IPC
     on: (channel: string, listener: (...args: any[]) => void) => () => void;
+    send: (channel: string, ...args: any[]) => void;
 
     // Recorder overlay
     showRecorderOverlay: () => void;
     hideRecorderOverlay: () => void;
     syncRecorderState: (state: { isRecording: boolean; startTime?: number | null }) => void;
+    openExternal: (url: string) => void;
   }
 
   interface RecordingSegment {

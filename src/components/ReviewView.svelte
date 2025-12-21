@@ -10,6 +10,8 @@
     screenLayoutState,
     webcamLayoutState,
   } from "../lib/stores";
+  import { licenseStore, isPaywallEnabled } from "../lib/stores/license";
+  import PricingModal from "./features/licensing/PricingModal.svelte";
   import type { PointerEventRecord } from "../lib/stores";
   import Review from "./review/Review.svelte";
   import cursorPackCursor from "../assets/cursors/cutecore-pink-cursor.png?url";
@@ -17,7 +19,10 @@
   import { timelineStore } from "../lib/stores/timeline";
   import { onDestroy, onMount } from "svelte";
   import { transcriptionSettings } from "../lib/stores/transcription";
-  import { ZOOM_DEFAULT_DURATION, ZOOM_DEFAULT_SCALE } from "../lib/timeline/zoomDefaults";
+  import {
+    ZOOM_DEFAULT_DURATION,
+    ZOOM_DEFAULT_SCALE,
+  } from "../lib/timeline/zoomDefaults";
   import {
     applyPersistedReviewState,
     type PersistedReviewState,
@@ -28,7 +33,11 @@
   } from "../lib/rendering/renderPresets";
   import type { RenderFormat } from "../lib/stores/reviewSession";
   import { importPointerPackFromProvider } from "../lib/pointer/providers";
-  import { addStoredPointerPacks, loadStoredPointerPacks, removeStoredPointerPack } from "../lib/pointer/pointerPackStorage";
+  import {
+    addStoredPointerPacks,
+    loadStoredPointerPacks,
+    removeStoredPointerPack,
+  } from "../lib/pointer/pointerPackStorage";
   import type { StoredPointerPack } from "../lib/pointer/pointerPackTypes";
   import {
     saveProject as saveProjectAction,
@@ -36,7 +45,10 @@
     downloadEditedVideo as downloadAction,
   } from "../lib/review/projectActions";
   import { reviewSessionStore } from "../lib/stores/reviewSession";
-  import type { RenderFormatOption, PointerIconOption } from "../lib/review/reviewTypes";
+  import type {
+    RenderFormatOption,
+    PointerIconOption,
+  } from "../lib/review/reviewTypes";
 
   let videoDuration = 0;
   let videoCurrentTime = 0;
@@ -44,6 +56,13 @@
   let renderProgress = 0;
   let isSavingProject = false;
   let projectSaved = false;
+  let showPricingModal = false;
+
+  $: canExport =
+    !$licenseStore ||
+    $licenseStore.isPro ||
+    !isPaywallEnabled ||
+    $licenseStore.exportsMade < 1;
 
   let playerFrameEl: HTMLDivElement | null = null;
   let frameObserver: ResizeObserver | null = null;
@@ -52,7 +71,10 @@
   let timelineDuration = 0;
   let recordedScreenWidth = 0;
   let recordedScreenHeight = 0;
-  let supportedRenderFormats: Record<string, boolean> = { mp4: true, webm: true };
+  let supportedRenderFormats: Record<string, boolean> = {
+    mp4: true,
+    webm: true,
+  };
 
   const baseRenderFormatOptions: { value: RenderFormat; label: string }[] = [
     { value: "mp4", label: "MP4 (H.264)" },
@@ -79,7 +101,7 @@
 
   let hasRestoredReviewState = false;
   let currentRecordingSessionId: string | null = null;
-  
+
   $: {
     const newId = $lastRecording?.segments?.[0]?.id ?? $lastRecording?.fileName;
     if (newId && newId !== currentRecordingSessionId) {
@@ -109,12 +131,17 @@
         setPointerIndicatorSize: reviewSessionStore.setPointerIndicatorSize,
         setPointerIconSelection: reviewSessionStore.setPointerIconSelection,
         setRenderFormat: (v) => reviewSessionStore.setRenderFormat(v as any),
-        setSelectedResolutionPreset: (v) => reviewSessionStore.setSelectedResolutionPreset(v as any),
-        setSelectedFrameRatePreset: (v) => reviewSessionStore.setSelectedFrameRatePreset(v as any),
+        setSelectedResolutionPreset: (v) =>
+          reviewSessionStore.setSelectedResolutionPreset(v as any),
+        setSelectedFrameRatePreset: (v) =>
+          reviewSessionStore.setSelectedFrameRatePreset(v as any),
         setShowCaptions: (v) => {
           reviewSessionStore.setShowCaptions(v);
-          transcriptionSettings.set({ ...$transcriptionSettings, showCaptions: v });
-        }
+          transcriptionSettings.set({
+            ...$transcriptionSettings,
+            showCaptions: v,
+          });
+        },
       });
       currentSnapshot = timelineStore.snapshot();
     } finally {
@@ -136,7 +163,8 @@
     if (!playerFrameEl) return;
     frameObserver = new ResizeObserver(updateVideoFrameMetrics);
     frameObserver.observe(playerFrameEl);
-    const videoFrameEl = playerFrameEl.querySelector<HTMLElement>(".video-frame");
+    const videoFrameEl =
+      playerFrameEl.querySelector<HTMLElement>(".video-frame");
     if (videoFrameEl) {
       frameObserver.observe(videoFrameEl);
     }
@@ -180,7 +208,9 @@
     timelineStore.reset();
   });
 
-  $: recordingDurationSeconds = $lastRecording ? Math.max(0, $lastRecording.duration / 1000) : 0;
+  $: recordingDurationSeconds = $lastRecording
+    ? Math.max(0, $lastRecording.duration / 1000)
+    : 0;
 
   $: segmentsOriginalDuration = ($lastRecording?.segments ?? []).reduce(
     (sum, seg) => sum + Math.max(0, seg.duration / 1000),
@@ -191,8 +221,8 @@
     ($lastRecording?.segments?.length ?? 0) > 0
       ? segmentsOriginalDuration
       : videoDuration > 0
-        ? videoDuration
-        : recordingDurationSeconds;
+      ? videoDuration
+      : recordingDurationSeconds;
 
   const clamp = (value: number, min: number, max: number) =>
     Math.max(min, Math.min(max, value));
@@ -221,34 +251,48 @@
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
-    
-    const { options, packs, message } = await importPointerPackFromProvider(providerId, file);
-    
+
+    const { options, packs, message } = await importPointerPackFromProvider(
+      providerId,
+      file
+    );
+
     if (packs.length > 0) {
       zipPointerIconOptions = [...zipPointerIconOptions, ...packs];
       addStoredPointerPacks(packs);
       reviewSessionStore.setPointerIconSelection(packs[0].id);
     }
-    
+
     zipPointerImportMessage = message;
     input.value = "";
   };
 
-  $: pointerIconOptions = [...builtinPointerIconOptions, ...zipPointerIconOptions];
+  $: pointerIconOptions = [
+    ...builtinPointerIconOptions,
+    ...zipPointerIconOptions,
+  ];
 
-  $: pointerIconOptionMap = new Map(pointerIconOptions.map((option) => [option.id, option]));
+  $: pointerIconOptionMap = new Map(
+    pointerIconOptions.map((option) => [option.id, option])
+  );
   $: removablePointerIconIds = zipPointerIconOptions.map((option) => option.id);
 
   const removePointerPack = (id: string) => {
-    zipPointerIconOptions = zipPointerIconOptions.filter((option) => option.id !== id);
+    zipPointerIconOptions = zipPointerIconOptions.filter(
+      (option) => option.id !== id
+    );
     removeStoredPointerPack(id);
     if ($reviewSessionStore.pointerIconSelection === id) {
-      reviewSessionStore.setPointerIconSelection(builtinPointerIconOptions[0]?.id ?? "");
+      reviewSessionStore.setPointerIconSelection(
+        builtinPointerIconOptions[0]?.id ?? ""
+      );
     }
   };
 
   $: {
-    const option = pointerIconOptionMap.get($reviewSessionStore.pointerIconSelection);
+    const option = pointerIconOptionMap.get(
+      $reviewSessionStore.pointerIconSelection
+    );
     const pointerIconUrl = option?.data ?? null;
     const pointerIconPressedUrl = option?.pressedData ?? option?.data ?? null;
 
@@ -262,7 +306,10 @@
       }
 
       // Strip matching leading/trailing quotes
-      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      if (
+        (v.startsWith('"') && v.endsWith('"')) ||
+        (v.startsWith("'") && v.endsWith("'"))
+      ) {
         v = v.slice(1, -1).trim();
       }
 
@@ -278,23 +325,34 @@
     pointerIconPressedImageUrl = unwrapCssUrl(pointerIconPressedUrl);
   }
 
-  const addZoomForClick = (clickEvent: PointerEventRecord, seconds?: number) => {
+  const addZoomForClick = (
+    clickEvent: PointerEventRecord,
+    seconds?: number
+  ) => {
     const duration = Math.max(timelineDuration, 0);
     if (duration <= 0) return;
 
-    const timestampSeconds = clampToTimelineDuration(seconds ?? clickEvent.t / 1000);
+    const timestampSeconds = clampToTimelineDuration(
+      seconds ?? clickEvent.t / 1000
+    );
     const segs = $lastRecording?.segments ?? [];
     if (segs.length) {
       let acc = 0;
       for (const seg of segs) {
         const segDur = Math.max(0, seg.duration / 1000);
-        const within = timestampSeconds >= acc && timestampSeconds <= acc + segDur;
+        const within =
+          timestampSeconds >= acc && timestampSeconds <= acc + segDur;
         if (within) {
           const segmentId = seg.id;
           const localTime = Math.max(0, timestampSeconds - acc);
           // Avoid duplicate zooms in the same segment
-          const existing = ($timelineStore.segmentEvents?.[segmentId] ?? []).find(
-            (e) => e.type === "zoom" && localTime >= e.startTime && localTime <= e.startTime + e.duration
+          const existing = (
+            $timelineStore.segmentEvents?.[segmentId] ?? []
+          ).find(
+            (e) =>
+              e.type === "zoom" &&
+              localTime >= e.startTime &&
+              localTime <= e.startTime + e.duration
           );
           if (existing) {
             timelineStore.selectEvent({ segmentId, eventId: existing.id });
@@ -303,11 +361,18 @@
 
           const focusX = typeof clickEvent.x === "number" ? clickEvent.x : 0.5;
           const focusY = typeof clickEvent.y === "number" ? clickEvent.y : 0.5;
-          const localStartTime = clamp(localTime - ZOOM_DEFAULT_DURATION / 2, 0, Math.max(0, segDur));
+          const localStartTime = clamp(
+            localTime - ZOOM_DEFAULT_DURATION / 2,
+            0,
+            Math.max(0, segDur)
+          );
 
           timelineStore.addZoom(segmentId, {
             startTime: localStartTime,
-            duration: Math.min(ZOOM_DEFAULT_DURATION, Math.max(0.1, segDur - localStartTime)),
+            duration: Math.min(
+              ZOOM_DEFAULT_DURATION,
+              Math.max(0.1, segDur - localStartTime)
+            ),
             focusX,
             focusY,
             zoom: ZOOM_DEFAULT_SCALE,
@@ -326,15 +391,20 @@
     $appView = "recorder";
   };
 
-  const handleSegmentTrimChange = (segmentId: string, edge: "start" | "end", valueMs: number) => {
+  const handleSegmentTrimChange = (
+    segmentId: string,
+    edge: "start" | "end",
+    valueMs: number
+  ) => {
     if (!$lastRecording?.segments) return;
-    
+
     const updatedSegments = $lastRecording.segments.map((seg) => {
       if (seg.id !== segmentId) return seg;
-      
-      const maxTrim = seg.duration - (edge === "start" ? seg.trimEnd : seg.trimStart) - 100; // Keep at least 100ms
+
+      const maxTrim =
+        seg.duration - (edge === "start" ? seg.trimEnd : seg.trimStart) - 100; // Keep at least 100ms
       const clampedValue = Math.max(0, Math.min(valueMs, maxTrim));
-      
+
       if (edge === "start") {
         return { ...seg, trimStart: clampedValue };
       } else {
@@ -349,13 +419,19 @@
       offset += Math.max(0, seg.duration - seg.trimStart - seg.trimEnd);
     }
 
-    lastRecording.update((rec) => rec ? { ...rec, segments: updatedSegments } : rec);
-    
+    lastRecording.update((rec) =>
+      rec ? { ...rec, segments: updatedSegments } : rec
+    );
+
     // Mark project as unsaved when trims change
     projectSaved = false;
   };
 
-  const saveProject = () => saveProjectAction((v) => (isSavingProject = v), () => (projectSaved = true));
+  const saveProject = () =>
+    saveProjectAction(
+      (v) => (isSavingProject = v),
+      () => (projectSaved = true)
+    );
   const resetAndNewProject = () => {
     lastRecording.set(null);
     currentProject.set(null);
@@ -365,21 +441,37 @@
   const continueRecording = () => continueRecordingAction();
 
   let currentCancelToken = { current: null as { cancelled: boolean } | null };
-  const downloadEditedVideo = () =>
-    downloadAction(
-      (v) => (isRenderingVideo = v),
-      (v) => (renderProgress = v),
-      currentCancelToken,
-      { pointerIconUrl: pointerIconImageUrl, pointerIconPressedUrl: pointerIconPressedImageUrl }
-    );
+  const downloadEditedVideo = async () => {
+    if (!canExport) {
+      showPricingModal = true;
+      return;
+    }
+
+    try {
+      await downloadAction(
+        (v) => (isRenderingVideo = v),
+        (v) => (renderProgress = v),
+        currentCancelToken,
+        {
+          pointerIconUrl: pointerIconImageUrl,
+          pointerIconPressedUrl: pointerIconPressedImageUrl,
+        }
+      );
+      // Only record the export if it was successful and they weren't already Pro
+      if (isPaywallEnabled && !$licenseStore.isPro) {
+        licenseStore.recordExport();
+      }
+    } catch (err) {
+      console.error("Export failed", err);
+    }
+  };
 
   const cancelCurrentRender = () => {
     if (currentCancelToken.current) currentCancelToken.current.cancelled = true;
   };
-
 </script>
 
-  <Review
+<Review
   bind:playerFrameEl
   lastRecording={$lastRecording}
   assets={$lastRecording?.assets ?? null}
@@ -389,15 +481,15 @@
   webcamLayoutState={$webcamLayoutState}
   theme={$activeTheme}
   background={$activeBackground}
-  timelineDuration={timelineDuration}
-  currentSnapshot={currentSnapshot}
+  {timelineDuration}
+  {currentSnapshot}
   {pointerIconOptions}
   {removablePointerIconIds}
-  zipPointerImportMessage={zipPointerImportMessage}
+  {zipPointerImportMessage}
   onZipPointerFileChange={handleZipPointerFile}
   onRemovePointerIconOption={removePointerPack}
-  pointerIconImageUrl={pointerIconImageUrl}
-  pointerIconPressedImageUrl={pointerIconPressedImageUrl}
+  {pointerIconImageUrl}
+  {pointerIconPressedImageUrl}
   bind:videoDuration
   bind:videoCurrentTime
   bind:screenWidth={recordedScreenWidth}
@@ -409,12 +501,17 @@
   {resetToRecorder}
   onResetAndNew={resetAndNewProject}
   {addZoomForClick}
-  renderFormatOptions={renderFormatOptions}
-  resolutionPresets={resolutionPresets}
-  frameRatePresets={frameRatePresets}
+  {renderFormatOptions}
+  {resolutionPresets}
+  {frameRatePresets}
   onSaveProject={saveProject}
   {isSavingProject}
   {projectSaved}
   onContinueRecording={continueRecording}
   onSegmentTrimChange={handleSegmentTrimChange}
+/>
+
+<PricingModal
+  show={showPricingModal}
+  on:close={() => (showPricingModal = false)}
 />
