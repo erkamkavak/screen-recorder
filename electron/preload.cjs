@@ -80,4 +80,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
   deleteProject: (projectId) => ipcRenderer.invoke("project:delete", projectId),
   getProjectsDir: () => ipcRenderer.invoke("project:get-projects-dir"),
   changeProjectsDir: () => ipcRenderer.invoke("project:change-dir"),
+
+  // Recorder overlay APIs
+  showRecorderOverlay: () => ipcRenderer.send("recorder:show-overlay"),
+  hideRecorderOverlay: () => ipcRenderer.send("recorder:hide-overlay"),
+  syncRecorderState: (state) => ipcRenderer.send("recorder:sync-state", state),
 });

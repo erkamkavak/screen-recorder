@@ -1,4 +1,4 @@
-export {};
+export { };
 
 declare global {
   interface DesktopCaptureSourceSummary {
@@ -89,13 +89,13 @@ declare global {
     startGlobalInputCapture?: () => void;
     stopGlobalInputCapture?: () => void;
     onGlobalInputEvent?: (listener: (event: any) => void) => () => void;
-    
+
     // Recording assets
     saveRecordingAsset?: (payload: { fileName: string; buffer: ArrayBuffer }) => Promise<string>;
     cleanupRecordingAssets?: (paths: string[]) => Promise<void>;
     readRecordingAsset?: (path: string) => Promise<ArrayBuffer>;
     getRecordingAssetUrl?: (path: string) => Promise<string>;
-    
+
     // Rendering
     startRenderStream?: (fileName: string) => Promise<string>;
     appendRenderChunk?: (payload: { filePath: string; buffer: ArrayBuffer }) => Promise<void>;
@@ -103,12 +103,12 @@ declare global {
     cancelRenderStream?: (filePath: string) => Promise<boolean>;
     closeRenderStream?: (filePath: string) => Promise<boolean>;
     saveRenderedFile?: (payload: { filePath: string; fileName: string }) => Promise<string | null>;
-    
+
     // Native capture (streaming frames)
     startNativeCapture?: (options: NativeRecordingOptions) => Promise<boolean>;
     stopNativeCapture?: () => Promise<boolean>;
     pollNativeFrame?: () => Promise<NativeCaptureFrame | null>;
-    
+
     // Native recording (Rust xcap-based, records to file)
     isNativeRecordingAvailable?: () => Promise<boolean>;
     listNativeSources?: () => Promise<DesktopCaptureSourceSummary[]>;
@@ -141,6 +141,14 @@ declare global {
     deleteProject: (projectId: string) => Promise<boolean>;
     getProjectsDir: () => Promise<string>;
     changeProjectsDir: () => Promise<string | null>;
+
+    // Generic IPC listener
+    on: (channel: string, listener: (...args: any[]) => void) => () => void;
+
+    // Recorder overlay
+    showRecorderOverlay: () => void;
+    hideRecorderOverlay: () => void;
+    syncRecorderState: (state: { isRecording: boolean; startTime?: number | null }) => void;
   }
 
   interface RecordingSegment {

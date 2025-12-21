@@ -17,6 +17,8 @@ const { uIOhook } = require("uiohook-napi");
 const notesHandler = require("./notes/notes-overlay-handler.cjs");
 const { getProjectsDir, setProjectsDir } = require("./config/projects.cjs");
 const { registerProjectsIpcHandlers } = require("./projects-ipc.cjs");
+const recorderHandler = require("./recorder/recorder-overlay-handler.cjs");
+
 
 // Native Rust addon for screen recording (xcap-based)
 let nativeAddon = null;
@@ -389,6 +391,10 @@ app.whenReady().then(() => {
 
   // Register notes overlay IPC handlers
   notesHandler.registerNotesIpcHandlers();
+
+  // Register recorder overlay IPC handlers
+  recorderHandler.registerRecorderIpcHandlers(() => mainWindow);
+
 
   ipcMain.handle("desktop-capture:list-sources", async (_event, options = {}) => {
     const sources = await desktopCapturer.getSources({

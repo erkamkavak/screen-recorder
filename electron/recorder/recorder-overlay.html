@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recorder Overlay</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      background: transparent;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+      height: 100%;
+      width: 100%;
+    }
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 8px;
+    }
+
+    .overlay-container {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: rgba(20, 20, 25, 0.7);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 40px;
+      padding: 8px 16px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+      -webkit-app-region: drag;
+      cursor: grab;
+      width: 100%;
+      height: 100%;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .overlay-container:active {
+      cursor: grabbing;
+    }
+
+    .record-button {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: #ef4444;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      transition: all 0.2s ease;
+      position: relative;
+      border: none;
+      outline: none;
+    }
+
+    .record-button:hover {
+      transform: scale(1.05);
+      background: #f87171;
+    }
+
+    .record-button:active {
+      transform: scale(0.95);
+    }
+
+    .record-button .icon {
+      width: 16px;
+      height: 16px;
+      background: white;
+      transition: all 0.2s ease;
+    }
+
+    .record-button.recording .icon {
+      border-radius: 2px;
+    }
+
+    .record-button:not(.recording) .icon {
+      border-radius: 50%;
+    }
+
+    .recording-pulse {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      border-radius: 50%;
+      background: #ef4444;
+      opacity: 0;
+      z-index: -1;
+    }
+
+    .recording .recording-pulse {
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+        opacity: 0.5;
+      }
+
+      100% {
+        transform: scale(1.8);
+        opacity: 0;
+      }
+    }
+
+    .status-info {
+      display: flex;
+      flex-direction: column;
+      color: white;
+      min-width: 60px;
+    }
+
+    .timer {
+      font-family: 'JetBrains Mono', 'Courier New', Courier, monospace;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+    }
+
+    .label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      opacity: 0.5;
+    }
+
+    .close-btn {
+      width: 24px;
+      height: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: rgba(255, 255, 255, 0.4);
+      cursor: pointer;
+      -webkit-app-region: no-drag;
+      border-radius: 6px;
+      transition: all 0.2s ease;
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .close-btn:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: white;
+    }
+
+    .close-btn svg {
+      width: 14px;
+      height: 14px;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="overlay-container">
+    <button id="recordBtn" class="record-button">
+      <div class="recording-pulse"></div>
+      <div class="icon"></div>
+    </button>
+    <div class="status-info">
+      <span class="label" id="statusLabel">READY</span>
+      <span class="timer" id="timer">00:00</span>
+    </div>
+    <div class="close-btn" id="hideBtn" title="Hide overlay">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"
+        stroke-linejoin="round">
+        <path d="M18 6L6 18M6 6l12 12" />
+      </svg>
+    </div>
+  </div>
+
+  <script>
+    const recordBtn = document.getElementById('recordBtn');
+    const timerEl = document.getElementById('timer');
+    const statusLabel = document.getElementById('statusLabel');
+    const hideBtn = document.getElementById('hideBtn');
+
+    let startTime = null;
+    let timerInterval = null;
+
+    function formatTime(ms) {
+      const seconds = Math.floor((ms / 1000) % 60);
+      const minutes = Math.floor((ms / (1000 * 60)) % 60);
+      const hours = Math.floor((ms / (1000 * 60 * 60)));
+
+      const pad = (n) => n.toString().padStart(2, '0');
+
+      if (hours > 0) {
+        return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+      }
+      return `${pad(minutes)}:${pad(seconds)}`;
+    }
+
+    function updateTimer() {
+      if (!startTime) return;
+      const now = Date.now();
+      timerEl.textContent = formatTime(now - startTime);
+    }
+
+    window.electronRecorderAPI.onUpdateState((state) => {
+      if (state.isRecording) {
+        recordBtn.classList.add('recording');
+        statusLabel.textContent = 'Recording';
+
+        // Update local startTime if provided by state
+        if (state.startTime !== undefined) {
+          // Svelte performance.now() might be different from Date.now() if we are not careful
+          // Actually, recordingStartTime store in Svelte uses performance.now() usually?
+          // Let's check stores/index.ts
+          startTime = state.startTime;
+        }
+
+        if (!timerInterval) {
+          timerInterval = setInterval(updateTimer, 1000);
+          updateTimer();
+        }
+      } else {
+        recordBtn.classList.remove('recording');
+        statusLabel.textContent = 'READY';
+        startTime = null;
+        if (timerInterval) {
+          clearInterval(timerInterval);
+          timerInterval = null;
+        }
+        timerEl.textContent = '00:00';
+      }
+    });
+
+    recordBtn.addEventListener('click', () => {
+      window.electronRecorderAPI.toggleRecording();
+    });
+
+    hideBtn.addEventListener('click', () => {
+      window.electronRecorderAPI.hideOverlay();
+    });
+  </script>
+</body>
+
+</html>

@@ -116,6 +116,18 @@ export const currentProject = writable<RecordingProject | null>(null);
 export type AppView = "recorder" | "review";
 export const appView = writable<AppView>("recorder");
 
+export const showFloatingControls = (() => {
+  const init = localStorage.getItem("showFloatingControls") === "true";
+  const store = writable(init);
+
+  store.subscribe((value) => {
+    localStorage.setItem("showFloatingControls", String(value));
+  });
+
+  return store;
+})();
+
+
 // Sidebar tabs
 export type SidebarTab = "layout" | "webcam" | "mic" | "notes";
 export const activeSidebarTab = writable<SidebarTab>("layout");
@@ -553,12 +565,12 @@ export const customBackgroundImage = (() => {
     if (value) {
       try {
         localStorage.setItem("customBackgroundImage", JSON.stringify(value));
-      } catch {}
+      } catch { }
       ensureCustomBackgroundImageElement(value.src);
     } else {
       try {
         localStorage.removeItem("customBackgroundImage");
-      } catch {}
+      } catch { }
       ensureCustomBackgroundImageElement(null);
     }
   });
@@ -582,7 +594,7 @@ export const generalLayoutState = (() => {
         ? JSON.parse(storedWebcamState)
         : generalLayoutStateSchema.parse({})
     );
-  } catch {}
+  } catch { }
 
   const store = writable<GeneralLayoutState>(initGeneralLayoutState);
 
@@ -590,7 +602,7 @@ export const generalLayoutState = (() => {
   store.set = (layoutState) => {
     try {
       localStorage.setItem("generalLayoutState", JSON.stringify(layoutState));
-    } catch {}
+    } catch { }
     _set(layoutState);
   };
 
@@ -679,7 +691,7 @@ export const webcamLayoutState = (() => {
         ? JSON.parse(storedWebcamState)
         : webcamStateSchema.parse({})
     );
-  } catch {}
+  } catch { }
 
   const store = writable<WebcamLayoutState>(initWebcamState);
 
@@ -687,7 +699,7 @@ export const webcamLayoutState = (() => {
   store.set = (webcamState) => {
     try {
       localStorage.setItem("webcamState", JSON.stringify(webcamState));
-    } catch {}
+    } catch { }
     _set(webcamState);
   };
 
@@ -697,7 +709,7 @@ export const webcamLayoutState = (() => {
       const next = updater(current);
       try {
         localStorage.setItem("webcamState", JSON.stringify(next));
-      } catch {}
+      } catch { }
       return next;
     });
   };
@@ -731,7 +743,7 @@ export const screenLayoutState = (() => {
     if (storedScreenState) {
       initScreenState = screenStateSchema.parse(JSON.parse(storedScreenState));
     }
-  } catch {}
+  } catch { }
 
   const store = writable<ScreenState>(initScreenState);
 
@@ -739,7 +751,7 @@ export const screenLayoutState = (() => {
   store.set = (screenState) => {
     try {
       localStorage.setItem("screenState", JSON.stringify(screenState));
-    } catch {}
+    } catch { }
     _set(screenState);
   };
 
