@@ -16,7 +16,12 @@
   import ProjectsList from "./components/features/projects/ProjectsList.svelte";
   import NotesOverlay from "./components/features/notes/NotesOverlay.svelte";
   import OnboardingModal from "./components/features/licensing/OnboardingModal.svelte";
-  import { hasSeenOnboarding } from "./lib/stores/license";
+  import {
+    hasSeenOnboarding,
+    licenseStore,
+    isPaywallEnabled,
+  } from "./lib/stores/license";
+  import PricingModal from "./components/features/licensing/PricingModal.svelte";
   import UpdaterNotification from "./components/features/updates/UpdaterNotification.svelte";
   import {
     createRecordingController,
@@ -67,7 +72,22 @@
     showRecorderProjects = false;
   };
 
+  let showPricingModal = false;
+  const togglePricing = () => (showPricingModal = !showPricingModal);
+
   onMount(() => {
+    // Check license validity on startup
+    void licenseStore.verify();
+
+    // Dev utilities
+    if (import.meta.env.DEV) {
+      (window as any).clearOnboarding = () => hasSeenOnboarding.reset();
+      (window as any).clearActivation = () => licenseStore.reset();
+      console.log(
+        "🛠️ Dev Mode: Use clearOnboarding() and clearActivation() in console to reset state."
+      );
+    }
+
     const unsubStart = window.electronAPI.on("recording:start-request", () => {
       if (!$isRecording) void recordingController.startRecording();
     });
@@ -166,41 +186,63 @@
               </div>
             {/if}
           </div>
-          <div class="relative">
-            <button
-              type="button"
-              class={`inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:bg-white ${
-                showRecorderProjects ? "ring-2 ring-sky-300" : ""
-              }`}
-              on:click={toggleRecorderProjects}
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="18"
-                height="18"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
+          <div class="flex items-center gap-3">
+            {#if isPaywallEnabled && !$licenseStore.isPro}
+              <button
+                type="button"
+                class="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-bold text-white shadow-lg shadow-emerald-600/20 transition hover:bg-emerald-500 hover:scale-[1.02] active:scale-[0.98]"
+                on:click={togglePricing}
               >
-                <path
-                  d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
-                />
-              </svg>
-              <span>Saved recordings</span>
-            </button>
-
-            {#if showRecorderProjects}
-              <div
-                class="fixed inset-0 z-[99]"
-                on:click={closeRecorderProjects}
-              />
-              <div
-                class="absolute right-0 top-full mt-2 z-[100] w-[420px] max-w-[calc(100vw-2rem)] shadow-2xl"
-                on:click|stopPropagation
-              >
-                <ProjectsList />
-              </div>
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                >
+                  <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+                <span>Upgrade</span>
+              </button>
             {/if}
+
+            <div class="relative">
+              <button
+                type="button"
+                class={`inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:bg-white ${
+                  showRecorderProjects ? "ring-2 ring-sky-300" : ""
+                }`}
+                on:click={toggleRecorderProjects}
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="18"
+                  height="18"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                >
+                  <path
+                    d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"
+                  />
+                </svg>
+                <span>Saved recordings</span>
+              </button>
+
+              {#if showRecorderProjects}
+                <div
+                  class="fixed inset-0 z-[99]"
+                  on:click={closeRecorderProjects}
+                />
+                <div
+                  class="absolute right-0 top-full mt-2 z-[100] w-[420px] max-w-[calc(100vw-2rem)] shadow-2xl"
+                  on:click|stopPropagation
+                >
+                  <ProjectsList />
+                </div>
+              {/if}
+            </div>
           </div>
         </div>
 
@@ -229,4 +271,9 @@
   {#if !$hasSeenOnboarding}
     <OnboardingModal />
   {/if}
+
+  <PricingModal
+    show={showPricingModal}
+    on:close={() => (showPricingModal = false)}
+  />
 </div>

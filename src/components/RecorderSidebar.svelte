@@ -10,13 +10,8 @@
     type SidebarTab,
   } from "../lib/stores";
   import { notesStore } from "../lib/stores/notes";
-  import { licenseStore, isPaywallEnabled } from "../lib/stores/license";
-  import PricingModal from "./features/licensing/PricingModal.svelte";
 
   const { notes } = notesStore;
-
-  let showPricingModal = false;
-  const togglePricing = () => (showPricingModal = !showPricingModal);
 
   const setTab = (tab: SidebarTab) => {
     $activeSidebarTab = tab;
@@ -126,95 +121,4 @@
       adjust alignment or use the sidebar to tweak padding and theme.
     </p>
   </div>
-
-  {#if isPaywallEnabled}
-    {#if !$licenseStore.isPro}
-      <button
-        on:click={togglePricing}
-        class="group relative overflow-hidden rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 p-6 text-white shadow-xl transition-all hover:scale-[1.02] hover:shadow-indigo-200 active:scale-[0.98] dark:shadow-none"
-      >
-        <div
-          class="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10 blur-2xl group-hover:bg-white/20"
-        />
-        <div class="relative z-10 flex flex-col gap-3">
-          <div class="flex items-center gap-2">
-            <div
-              class="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20 backdrop-blur-sm"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                width="20"
-                height="20"
-                fill="none"
-                stroke="white"
-                stroke-width="2.5"
-              >
-                <path
-                  d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
-                />
-              </svg>
-            </div>
-            <span class="text-sm font-bold uppercase tracking-widest"
-              >Upgrade to Pro</span
-            >
-          </div>
-          <p class="text-sm font-medium leading-relaxed text-indigo-50/90">
-            Get unlimited 4K exports, custom branding, and more features.
-          </p>
-          <div
-            class="mt-1 flex items-center gap-2 text-xs font-bold text-white"
-          >
-            <span>Get Started</span>
-            <svg
-              viewBox="0 0 24 24"
-              width="14"
-              height="14"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="3"
-              class="transition-transform group-hover:translate-x-1"
-            >
-              <path d="M5 12h14M12 5l7 7-7 7" />
-            </svg>
-          </div>
-        </div>
-      </button>
-    {:else}
-      <div
-        class="flex items-center gap-3 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4 dark:border-emerald-900/30 dark:bg-emerald-900/10"
-      >
-        <div
-          class="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="white"
-            stroke-width="3"
-          >
-            <path d="M20 6L9 17l-5-5" />
-          </svg>
-        </div>
-        <div>
-          <p
-            class="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400"
-          >
-            Pro Active
-          </p>
-          <p
-            class="text-[11px] font-medium text-emerald-600/80 dark:text-emerald-500/80"
-          >
-            Lifetime License
-          </p>
-        </div>
-      </div>
-    {/if}
-  {/if}
 </aside>
-
-<PricingModal
-  show={showPricingModal}
-  on:close={() => (showPricingModal = false)}
-/>
