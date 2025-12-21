@@ -134,7 +134,6 @@
 
     // Ensure metadata-based sizing and share preview are updated
     screenShare = {
-      uid: "composite-screen",
       id: "composite-screen",
       preview: screenVideo,
       stream: null,
@@ -353,7 +352,6 @@
     if (!ctx) return;
 
     screenShare = {
-      uid: "composite-screen",
       id: "composite-screen",
       preview: screenVideo,
       stream: null,

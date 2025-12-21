@@ -21,15 +21,23 @@ const clampTime = (value: number, duration: number) =>
 const findSegmentForTime = (segments: RecordingSegment[], timeSec: number) => {
   let acc = 0;
   for (const seg of segments) {
+    const trimStartSec = Math.max(0, seg.trimStart / 1000);
+    const trimEndSec = Math.max(0, seg.trimEnd / 1000);
+    const effectiveDur = Math.max(0, (seg.duration - seg.trimStart - seg.trimEnd) / 1000);
     const segDur = Math.max(0, seg.duration / 1000);
-    if (timeSec >= acc && timeSec <= acc + segDur) {
+    if (timeSec <= acc + effectiveDur + 0.0001) {
+      const segmentEndSec = Math.max(trimStartSec, segDur - trimEndSec);
+      const localTime = Math.max(
+        trimStartSec,
+        Math.min(segmentEndSec, (timeSec - acc) + trimStartSec)
+      );
       return {
         segmentId: seg.id,
-        localTime: Math.max(0, timeSec - acc),
-        segDur,
+        localTime,
+        segDur: effectiveDur,
       };
     }
-    acc += segDur;
+    acc += effectiveDur;
   }
   return null;
 };
@@ -73,7 +81,7 @@ export const createZoomEditorController = (options: ZoomEditorControllerOptions)
     if (!zoomDraft) return;
     const info = findSegmentForTime(options.getSegments(), options.getCurrentTime());
     if (info && info.segmentId === zoomDraft.segmentId) {
-      const duration = Math.max(0.1, info.localTime - zoomDraft.startTime + ZOOM_DEFAULT_DURATION);
+      const duration = Math.max(0.1, info.localTime - zoomDraft.startTime + ZOOM_DEFAULT_DURATION / 2);
       timelineStore.updateZoom(zoomDraft.segmentId, zoomDraft.eventId, { duration });
     }
     zoomDraft = null;
@@ -189,7 +197,7 @@ export const createZoomEditorController = (options: ZoomEditorControllerOptions)
     if (!zoomDraft) return;
     const info = findSegmentForTime(options.getSegments(), currentTimeSec);
     if (info && info.segmentId === zoomDraft.segmentId) {
-      const duration = Math.max(0.1, info.localTime - zoomDraft.startTime + ZOOM_DEFAULT_DURATION);
+      const duration = Math.max(0.1, info.localTime - zoomDraft.startTime + ZOOM_DEFAULT_DURATION / 2);
       timelineStore.updateZoom(zoomDraft.segmentId, zoomDraft.eventId, { duration });
     }
   };
