@@ -3,13 +3,27 @@
   import type { TimelineSnapshot } from "../../lib/stores/timeline";
   import { computeZoomState } from "../../lib/timeline/timelinePlayback";
   import { drawScreenShare, drawWebcam } from "../../lib/canvas/layoutDrawers";
-  import { computePointerState, type ComputedPointerState } from "../../lib/pointer/pointerState";
+  import {
+    computePointerState,
+    type ComputedPointerState,
+  } from "../../lib/pointer/pointerState";
   import { calculateScreenPlacement } from "../../lib/canvas/layoutDrawers";
   import { drawCaptionsOverlay } from "../../lib/canvas/captions";
-  import { drawClickRipplesOverlay, drawPointerCursorOverlay } from "../../lib/canvas/pointerOverlays";
-  import { createAudioElement, createVideoElement, loadImage, waitForMetadata } from "../../lib/canvas/mediaElements";
+  import {
+    drawClickRipplesOverlay,
+    drawPointerCursorOverlay,
+  } from "../../lib/canvas/pointerOverlays";
+  import {
+    createAudioElement,
+    createVideoElement,
+    loadImage,
+    waitForMetadata,
+  } from "../../lib/canvas/mediaElements";
   import type { RecordingSegment } from "../../lib/stores";
-  import { getSegmentForTime, getTotalSegmentsDuration } from "../../lib/rendering/segmentRenderer";
+  import {
+    getSegmentForTime,
+    getTotalSegmentsDuration,
+  } from "../../lib/rendering/segmentRenderer";
   import { getPointerRecords } from "../../lib/pointer/pointerState";
   import type {
     Background,
@@ -25,7 +39,10 @@
   } from "../../lib/stores";
   import { getAssetUrlFromFile } from "../../lib/backend/assetStorage";
   import PlayerControls from "./PlayerControls.svelte";
-  import { reviewSessionStore, pointerRecords } from "../../lib/stores/reviewSession";
+  import {
+    reviewSessionStore,
+    pointerRecords,
+  } from "../../lib/stores/reviewSession";
 
   export let assets: RecordingAssets;
   export let canvasSize: CanvasSize;
@@ -37,7 +54,9 @@
   export let snapshot: TimelineSnapshot;
   export let segments: RecordingSegment[] = [];
 
-  export let transcript: { segments: { startMs: number; endMs: number; text: string }[] } | null = null;
+  export let transcript: {
+    segments: { startMs: number; endMs: number; text: string }[];
+  } | null = null;
 
   export let pointerIconUrl: string | null = null;
   export let pointerIconPressedUrl: string | null = null;
@@ -121,9 +140,15 @@
     activeSegmentId = seg.id;
 
     // Pause old media before swapping references
-    try { screenVideo?.pause(); } catch {}
-    try { webcamVideo?.pause(); } catch {}
-    try { audioEl?.pause(); } catch {}
+    try {
+      screenVideo?.pause();
+    } catch {}
+    try {
+      webcamVideo?.pause();
+    } catch {}
+    try {
+      audioEl?.pause();
+    } catch {}
 
     screenVideo = next.screenVideo;
     webcamVideo = next.webcamVideo;
@@ -157,7 +182,10 @@
       };
     }
 
-    const clampedLocal = Math.max(0, Math.min(screenVideo.duration || localTimeSec, localTimeSec));
+    const clampedLocal = Math.max(
+      0,
+      Math.min(screenVideo.duration || localTimeSec, localTimeSec)
+    );
     screenVideo.currentTime = clampedLocal;
     if (webcamVideo) webcamVideo.currentTime = clampedLocal;
     if (audioEl) audioEl.currentTime = clampedLocal;
@@ -199,9 +227,11 @@
     segmentStartsSec = starts;
     segmentOriginalStartsSec = getSegmentOriginalStartsSec(segments || []);
     duration = Math.max(0, getTotalSegmentsDuration(segments || []) / 1000);
-    
+
     if (activeSegmentId) {
-      const foundIdx = (segments || []).findIndex(s => s.id === activeSegmentId);
+      const foundIdx = (segments || []).findIndex(
+        (s) => s.id === activeSegmentId
+      );
       if (foundIdx !== -1) {
         activeSegmentIndex = foundIdx;
         activeSegment = segments[foundIdx];
@@ -253,7 +283,7 @@
   } else {
     pointerPressIconImageToken += 1;
     pointerPressedIconImage = null;
-  }  
+  }
 
   const loadAssets = async () => {
     segmentMediaById = new Map();
@@ -277,10 +307,14 @@
         const segScreenUrl = await safeLoad(screenAsset);
         if (!segScreenUrl) continue;
         const segWebcamUrl = await safeLoad(segAssets.webcam ?? null);
-        const segAudioUrl = $reviewSessionStore.includeAudioTrack ? await safeLoad(segAssets.audio ?? null) : null;
+        const segAudioUrl = $reviewSessionStore.includeAudioTrack
+          ? await safeLoad(segAssets.audio ?? null)
+          : null;
 
         const segScreenVideo = createVideoElement(segScreenUrl);
-        const segWebcamVideo = segWebcamUrl ? createVideoElement(segWebcamUrl) : null;
+        const segWebcamVideo = segWebcamUrl
+          ? createVideoElement(segWebcamUrl)
+          : null;
         await Promise.all([
           waitForMetadata(segScreenVideo),
           segWebcamVideo ? waitForMetadata(segWebcamVideo) : Promise.resolve(),
@@ -304,16 +338,17 @@
       // Find first segment that actually loaded media for
       const firstIdx = segments.findIndex((s) => segmentMediaById.has(s.id));
       if (firstIdx < 0) return;
-      
+
       const info = getSegmentForTime(segments, currentTime);
       let targetIdx = info?.segmentIndex ?? firstIdx;
       if (!segmentMediaById.has(segments[targetIdx]?.id)) {
         targetIdx = firstIdx;
       }
-      const targetLocalTime = info?.segmentIndex === targetIdx
-        ? (info?.localTime ?? (segments[targetIdx].trimStart / 1000))
-        : (segments[targetIdx].trimStart / 1000);
-      
+      const targetLocalTime =
+        info?.segmentIndex === targetIdx
+          ? info?.localTime ?? segments[targetIdx].trimStart / 1000
+          : segments[targetIdx].trimStart / 1000;
+
       await activateSegment(targetIdx, targetLocalTime);
       duration = Math.max(0, getTotalSegmentsDuration(segments) / 1000);
     } else {
@@ -329,12 +364,16 @@
       webcamVideo = webcamUrl ? createVideoElement(webcamUrl) : null;
       if (webcamVideo) await waitForMetadata(webcamVideo);
 
-      audioUrl = $reviewSessionStore.includeAudioTrack ? await safeLoad(assets.audio ?? null) : null;
+      audioUrl = $reviewSessionStore.includeAudioTrack
+        ? await safeLoad(assets.audio ?? null)
+        : null;
       audioEl = audioUrl ? createAudioElement(audioUrl) : null;
     }
 
     if (!screenVideo) {
-      console.warn("CompositePlayer: screenVideo not available after loadAssets");
+      console.warn(
+        "CompositePlayer: screenVideo not available after loadAssets"
+      );
       return;
     }
 
@@ -358,7 +397,7 @@
       width: screenVideo.videoWidth,
       height: screenVideo.videoHeight,
     };
-    
+
     // Export screen dimensions for pointer overlay positioning
     screenWidth = screenVideo.videoWidth;
     screenHeight = screenVideo.videoHeight;
@@ -384,10 +423,11 @@
     // Handle NaN duration (can happen if metadata didn't load properly)
     if (!hasSegments() && screenVideo) {
       const videoDuration = screenVideo.duration;
-      duration = isFinite(videoDuration) && videoDuration > 0 ? videoDuration : 0;
+      duration =
+        isFinite(videoDuration) && videoDuration > 0 ? videoDuration : 0;
       currentTime = screenVideo.currentTime || 0;
     }
-    
+
     // If duration is still 0, try to get it from durationchange event
     if (!hasSegments() && screenVideo && duration === 0) {
       screenVideo.addEventListener("durationchange", () => {
@@ -420,7 +460,6 @@
     ctx.translate(-pivotX, -pivotY);
   };
 
-
   const getPlacement = () => {
     if (!drawArgs) return null;
     return calculateScreenPlacement(
@@ -434,25 +473,39 @@
   const drawFrame = () => {
     if (!ctx || !screenVideo || !drawArgs) return;
     const localOriginalTimeSec = screenVideo.currentTime || 0;
-    const segmentZoomEvents = activeSegmentId ? (snapshot.segmentEvents?.[activeSegmentId] ?? []) : [];
-    const zoomEvalTimeSec = hasSegments() ? localOriginalTimeSec : (screenVideo.currentTime || 0);
+    const segmentZoomEvents = activeSegmentId
+      ? snapshot.segmentEvents?.[activeSegmentId] ?? []
+      : [];
+    const zoomEvalTimeSec = hasSegments()
+      ? localOriginalTimeSec
+      : screenVideo.currentTime || 0;
 
-    const segmentPointerRecords = hasSegments() && activeSegment
-      ? getPointerRecords(activeSegment.events)
-      : $pointerRecords;
-    const segmentClickRecords = segmentPointerRecords.filter((event) => event.kind === "click");
+    const segmentPointerRecords =
+      hasSegments() && activeSegment
+        ? getPointerRecords(activeSegment.events)
+        : $pointerRecords;
+    const segmentClickRecords = segmentPointerRecords.filter(
+      (event) => event.kind === "click"
+    );
 
     ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
     ctx.imageSmoothingQuality = "high";
     ctx.globalCompositeOperation = "source-over";
 
     ctx.save();
-    const { scale, focusX, focusY } = computeZoomState(segmentZoomEvents, zoomEvalTimeSec);
-    const pointerState = computePointerState(zoomEvalTimeSec, segmentPointerRecords);
+    const { scale, focusX, focusY } = computeZoomState(
+      segmentZoomEvents,
+      zoomEvalTimeSec
+    );
+    const pointerState = computePointerState(
+      zoomEvalTimeSec,
+      segmentPointerRecords
+    );
     const zoomFocusX = pointerState.visible ? pointerState.x : focusX;
     const zoomFocusY = pointerState.visible ? pointerState.y : focusY;
     applyZoom(scale, zoomFocusX, zoomFocusY);
-    if (true) { // Always show screen if it's there
+    if (true) {
+      // Always show screen if it's there
       drawScreenShare(drawArgs);
       const placement = getPlacement();
       if (ctx && placement && $reviewSessionStore.includeClickTrack) {
@@ -486,13 +539,19 @@
 
     // Draw captions outside zoom
     if (true) {
-      if (ctx && $reviewSessionStore.showCaptions && transcript?.segments?.length) {
+      if (
+        ctx &&
+        $reviewSessionStore.showCaptions &&
+        transcript?.segments?.length
+      ) {
         drawCaptionsOverlay({
           ctx,
           canvas: canvasEl,
           canvasSize,
           timeSec: zoomEvalTimeSec,
           segments: transcript.segments,
+          fontSize: $reviewSessionStore.captionFontSize,
+          color: $reviewSessionStore.captionColor,
         });
       }
     }
@@ -527,7 +586,9 @@
       await Promise.all([
         screenVideo.play(),
         webcamVideo?.play() ?? Promise.resolve(),
-        $reviewSessionStore.includeAudioTrack && audioEl ? audioEl.play() : Promise.resolve(),
+        $reviewSessionStore.includeAudioTrack && audioEl
+          ? audioEl.play()
+          : Promise.resolve(),
       ]);
       startLoop();
       startSyncTimeLoop();
@@ -547,18 +608,24 @@
         if (audioEl) audioEl.currentTime = screenVideo?.currentTime ?? 0;
       }
       if (playing) {
-        try { await audioEl?.play(); } catch {}
+        try {
+          await audioEl?.play();
+        } catch {}
       }
     } else {
-      try { audioEl?.pause(); } catch {}
+      try {
+        audioEl?.pause();
+      } catch {}
       audioEl = null;
       audioUrl = null;
     }
   };
 
-  $: (async () => { await updateAudio(); })();
+  $: (async () => {
+    await updateAudio();
+  })();
 
-  $: if (!playing && (snapshot !== undefined)) {
+  $: if (!playing && snapshot !== undefined) {
     drawFrame();
   }
 
@@ -570,7 +637,8 @@
     audioEl?.pause();
   };
 
-  const clampToTimeline = (t: number) => Math.max(0, Math.min(duration || 0, t));
+  const clampToTimeline = (t: number) =>
+    Math.max(0, Math.min(duration || 0, t));
 
   const seek = (value: number) => {
     if (!screenVideo) return;
@@ -595,7 +663,10 @@
       if (!screenVideo) return;
       if (hasSegments() && activeSegment) {
         const local = screenVideo.currentTime;
-        const effectiveLocal = Math.max(0, local - (activeSegment.trimStart / 1000));
+        const effectiveLocal = Math.max(
+          0,
+          local - activeSegment.trimStart / 1000
+        );
         currentTime = activeSegmentStartSec + effectiveLocal;
       } else {
         currentTime = screenVideo.currentTime;
@@ -616,10 +687,14 @@
       }
 
       if (hasSegments() && activeSegment && segmentMediaById.size) {
-        const localEnd = (activeSegment.duration - activeSegment.trimEnd) / 1000;
+        const localEnd =
+          (activeSegment.duration - activeSegment.trimEnd) / 1000;
         if (screenVideo.currentTime >= localEnd - epsilon) {
           let nextIdx = activeSegmentIndex + 1;
-          while (nextIdx < segments.length && !segmentMediaById.has(segments[nextIdx].id)) {
+          while (
+            nextIdx < segments.length &&
+            !segmentMediaById.has(segments[nextIdx].id)
+          ) {
             nextIdx += 1;
           }
           if (nextIdx < segments.length && nextIdx !== activeSegmentIndex) {
@@ -674,9 +749,9 @@
   </div>
 
   <PlayerControls
-    playing={playing}
-    currentTime={currentTime}
-    duration={duration}
+    {playing}
+    {currentTime}
+    {duration}
     onPlay={play}
     onPause={pause}
     onSeek={seek}
@@ -690,7 +765,8 @@
     background: #0f172a;
     border-radius: 16px;
     overflow: hidden;
-    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3),
+      0 8px 10px -6px rgba(0, 0, 0, 0.3);
   }
 
   .video-frame {

@@ -589,7 +589,7 @@ const renderMultiSegment = async (
                 continue;
             }
 
-            const source = segmentSources[timeInfo.segmentIndex];
+            const source = segmentSources.find(s => s.segment.id === timeInfo.segment.id);
             if (!source) {
                 continue;
             }

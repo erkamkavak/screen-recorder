@@ -141,11 +141,8 @@
       }
 
       const result = await backendAPI.getTranscriptionResult(jobId);
-      console.log("[TRANSCRIPTION] Got result:", result);
-      console.log("[TRANSCRIPTION] Segments:", result?.segments);
       if (result) {
         const versionId = crypto.randomUUID();
-        console.log("[TRANSCRIPTION] Creating version:", versionId);
         transcriptionVersions.update((v) => [
           ...v,
           {
@@ -157,9 +154,6 @@
           },
         ]);
         activeTranscriptionId.set(versionId);
-        console.log("[TRANSCRIPTION] Version added, total versions:", $transcriptionVersions.length);
-      } else {
-        console.log("[TRANSCRIPTION] Result was null/undefined");
       }
       transcriptionJob.set({
         jobId,
