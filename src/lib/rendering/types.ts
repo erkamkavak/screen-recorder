@@ -16,6 +16,8 @@ export interface RenderToggleConfig {
     showMouse: boolean;
     showClicks: boolean;
     showCaptions: boolean;
+    captionFontSize: number;
+    captionColor: string;
     includeAudio: boolean;
 }
 
@@ -68,17 +70,17 @@ export interface RenderOptions {
  */
 export type RenderResult =
     | {
-          type: "blob";
-          blob: Blob;
-          mimeType: string;
-          ext: string;
-      }
+        type: "blob";
+        blob: Blob;
+        mimeType: string;
+        ext: string;
+    }
     | {
-          type: "file";
-          filePath: string;
-          mimeType: string;
-          ext: string;
-      };
+        type: "file";
+        filePath: string;
+        mimeType: string;
+        ext: string;
+    };
 
 /**
  * Internal state for tracking render timing

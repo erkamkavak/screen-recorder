@@ -95,6 +95,78 @@ export const cancelTranscription = async (jobId: string): Promise<boolean> => {
   throw new Error("Transcription not available outside Electron");
 };
 
+// Transcription Model Types
+export interface TranscriptionModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  filename: string;
+  url: string | null;
+  sizeMb: number;
+  isDownloaded: boolean;
+  isDownloading: boolean;
+  partialSize: number;
+  isDirectory: boolean;
+  engineType: string;
+  accuracyScore: number;
+  speedScore: number;
+}
+
+// Transcription Model Management APIs
+export const listTranscriptionModels = async (): Promise<TranscriptionModelInfo[]> => {
+  if (isElectron) {
+    try {
+      return await window.electronAPI.listTranscriptionModels?.() ?? [];
+    } catch (error) {
+      console.error("Failed to list transcription models:", error);
+      return [];
+    }
+  }
+  throw new Error("Transcription model management not available outside Electron");
+};
+
+export const getTranscriptionModelInfo = async (modelId: string): Promise<TranscriptionModelInfo | null> => {
+  if (isElectron) {
+    return await window.electronAPI.getTranscriptionModelInfo?.(modelId) ?? null;
+  }
+  throw new Error("Transcription model management not available outside Electron");
+};
+
+export const getTranscriptionModelPath = async (modelId: string): Promise<string> => {
+  if (isElectron) {
+    return await window.electronAPI.getTranscriptionModelPath?.(modelId);
+  }
+  throw new Error("Transcription model management not available outside Electron");
+};
+
+export const downloadTranscriptionModel = async (modelId: string): Promise<boolean> => {
+  if (isElectron) {
+    return await window.electronAPI.downloadTranscriptionModel?.(modelId) ?? false;
+  }
+  throw new Error("Transcription model management not available outside Electron");
+};
+
+export const cancelTranscriptionModelDownload = async (modelId: string): Promise<boolean> => {
+  if (isElectron) {
+    return await window.electronAPI.cancelTranscriptionModelDownload?.(modelId) ?? false;
+  }
+  throw new Error("Transcription model management not available outside Electron");
+};
+
+export const deleteTranscriptionModel = async (modelId: string): Promise<boolean> => {
+  if (isElectron) {
+    return await window.electronAPI.deleteTranscriptionModel?.(modelId) ?? false;
+  }
+  throw new Error("Transcription model management not available outside Electron");
+};
+
+export const refreshTranscriptionModelStatus = async (): Promise<boolean> => {
+  if (isElectron) {
+    return await window.electronAPI.refreshTranscriptionModelStatus?.() ?? false;
+  }
+  throw new Error("Transcription model management not available outside Electron");
+};
+
 // Input Capture APIs
 export const startGlobalInputCapture = async (): Promise<void> => {
   if (isElectron) {
@@ -563,6 +635,15 @@ export const backendAPI = {
   getTranscriptionJob,
   getTranscriptionResult,
   cancelTranscription,
+
+  // Transcription model management
+  listTranscriptionModels,
+  getTranscriptionModelInfo,
+  getTranscriptionModelPath,
+  downloadTranscriptionModel,
+  cancelTranscriptionModelDownload,
+  deleteTranscriptionModel,
+  refreshTranscriptionModelStatus,
 
   // Rendering
   startRenderStream,

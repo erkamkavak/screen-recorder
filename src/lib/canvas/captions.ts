@@ -43,8 +43,10 @@ export const drawCaptionsOverlay = (args: {
   canvasSize: CanvasSize;
   timeSec: number;
   segments: CaptionLikeSegment[];
+  fontSize?: number;
+  color?: string;
 }) => {
-  const { ctx, canvas, canvasSize, timeSec, segments } = args;
+  const { ctx, canvas, canvasSize, timeSec, segments, fontSize: customFontSize, color } = args;
   if (!segments.length) return;
 
   const text = findCaptionText(segments, timeSec);
@@ -52,42 +54,70 @@ export const drawCaptionsOverlay = (args: {
 
   const baseHeight = 1080;
   const resolutionScale = canvasSize.height / baseHeight;
-  const fontSize = Math.max(14, Math.round(46 * resolutionScale));
-  const lineHeight = Math.round(fontSize * 1.2);
-  const paddingX = Math.round(48 * resolutionScale);
-  const paddingY = Math.round(18 * resolutionScale);
-  const maxWidth = Math.max(10, canvas.width - paddingX * 2);
+  const fontSize = customFontSize ? Math.round(customFontSize * resolutionScale) : Math.max(14, Math.round(46 * resolutionScale));
+  const lineHeight = Math.round(fontSize * 1.3);
+  
+  // Safe area padding from edges
+  const edgePaddingX = Math.round(64 * resolutionScale);
+  const edgePaddingY = Math.round(48 * resolutionScale);
+  
+  // Internal padding for the text box
+  const internalPaddingX = Math.round(24 * resolutionScale);
+  const internalPaddingY = Math.round(12 * resolutionScale);
+
+  const maxWidth = Math.max(10, canvas.width - edgePaddingX * 2);
 
   ctx.save();
   ctx.globalCompositeOperation = "source-over";
   ctx.textAlign = "center";
-  ctx.textBaseline = "bottom";
+  ctx.textBaseline = "middle";
   ctx.font = `600 ${fontSize}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
 
   const lines = wrapTextLines(ctx, text, maxWidth);
-  const totalH = lines.length * lineHeight;
-  const x = canvas.width / 2;
-  const bottom = canvas.height - paddingY;
-  const bgTop = bottom - totalH - paddingY;
+  if (!lines.length) {
+    ctx.restore();
+    return;
+  }
 
-  ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
-  const boxW = Math.min(maxWidth, Math.max(10, maxWidth));
+  const lineWidths = lines.map(l => ctx.measureText(l).width);
+  const maxLineWidth = Math.max(...lineWidths);
+  
+  const totalTextH = lines.length * lineHeight;
+  const boxW = maxLineWidth + internalPaddingX * 2;
+  const boxH = totalTextH + internalPaddingY * 2;
+  
+  const x = canvas.width / 2;
+  const bottom = canvas.height - edgePaddingY;
+  const boxY = bottom - boxH;
   const boxX = (canvas.width - boxW) / 2;
-  const boxH = totalH + paddingY;
-  const r = Math.round(12 * resolutionScale);
+
+  // Draw background shadow/glow for readability
+  ctx.shadowColor = "rgba(0, 0, 0, 0.3)";
+  ctx.shadowBlur = Math.round(8 * resolutionScale);
+  ctx.shadowOffsetY = Math.round(2 * resolutionScale);
+
+  // Draw tight background box
+  ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+  const r = Math.round(10 * resolutionScale);
+  
   ctx.beginPath();
-  ctx.moveTo(boxX + r, bgTop);
-  ctx.arcTo(boxX + boxW, bgTop, boxX + boxW, bgTop + boxH, r);
-  ctx.arcTo(boxX + boxW, bgTop + boxH, boxX, bgTop + boxH, r);
-  ctx.arcTo(boxX, bgTop + boxH, boxX, bgTop, r);
-  ctx.arcTo(boxX, bgTop, boxX + boxW, bgTop, r);
-  ctx.closePath();
+  ctx.roundRect(boxX, boxY, boxW, boxH, r);
   ctx.fill();
 
-  ctx.fillStyle = "rgba(255, 255, 255, 0.98)";
+  // Reset shadow for text
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+  
+  // Draw subtle text shadow for better contrast
+  ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+  ctx.shadowBlur = Math.round(4 * resolutionScale);
+
+  ctx.fillStyle = color || "rgba(255, 255, 255, 0.98)";
+  
+  const startY = boxY + internalPaddingY + lineHeight / 2;
   for (let i = 0; i < lines.length; i++) {
-    const y = bottom - (lines.length - 1 - i) * lineHeight;
-    ctx.fillText(lines[i], x, y);
+    const lineY = startY + i * lineHeight;
+    ctx.fillText(lines[i], x, lineY);
   }
 
   ctx.restore();

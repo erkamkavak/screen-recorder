@@ -1,5 +1,6 @@
 import type { RecordingSegment } from "../stores";
 import type { TimelineSnapshot } from "../stores/timeline";
+import type { TranscriptionVersion } from "../stores/transcription";
 
 export type PersistedReviewState = {
   timeline?: TimelineSnapshot;
@@ -13,6 +14,10 @@ export type PersistedReviewState = {
   selectedResolutionPreset?: string;
   selectedFrameRatePreset?: string;
   showCaptions?: boolean;
+  captionFontSize?: number;
+  captionColor?: string;
+  transcriptionVersions?: TranscriptionVersion[];
+  activeTranscriptionId?: string | null;
 };
 
 export const getSegmentsEffectiveDurationSec = (segments: RecordingSegment[] | null | undefined) => {
@@ -36,6 +41,10 @@ export const buildPersistedReviewState = (args: {
   selectedResolutionPreset: string;
   selectedFrameRatePreset: string;
   showCaptions: boolean;
+  captionFontSize: number;
+  captionColor: string;
+  transcriptionVersions: TranscriptionVersion[];
+  activeTranscriptionId: string | null;
 }): PersistedReviewState => ({
   timeline: args.timeline,
   includePointerTrack: args.includePointerTrack,
@@ -48,6 +57,10 @@ export const buildPersistedReviewState = (args: {
   selectedResolutionPreset: args.selectedResolutionPreset,
   selectedFrameRatePreset: args.selectedFrameRatePreset,
   showCaptions: args.showCaptions,
+  captionFontSize: args.captionFontSize,
+  captionColor: args.captionColor,
+  transcriptionVersions: args.transcriptionVersions,
+  activeTranscriptionId: args.activeTranscriptionId,
 });
 
 export const buildPersistedReviewStateForContinuation = (args: {
@@ -73,6 +86,10 @@ export const applyPersistedReviewState = (args: {
   setSelectedResolutionPreset: (v: string) => void;
   setSelectedFrameRatePreset: (v: string) => void;
   setShowCaptions: (v: boolean) => void;
+  setCaptionFontSize: (v: number) => void;
+  setCaptionColor: (v: string) => void;
+  setTranscriptionVersions: (v: TranscriptionVersion[]) => void;
+  setActiveTranscriptionId: (v: string | null) => void;
 }): void => {
   const { state } = args;
 
@@ -104,5 +121,17 @@ export const applyPersistedReviewState = (args: {
 
   if (typeof state?.showCaptions === "boolean") {
     args.setShowCaptions(state.showCaptions);
+  }
+  if (typeof state?.captionFontSize === "number") {
+    args.setCaptionFontSize(state.captionFontSize);
+  }
+  if (typeof state?.captionColor === "string") {
+    args.setCaptionColor(state.captionColor);
+  }
+  if (state?.transcriptionVersions) {
+    args.setTranscriptionVersions(state.transcriptionVersions);
+  }
+  if (state?.activeTranscriptionId !== undefined) {
+    args.setActiveTranscriptionId(state.activeTranscriptionId);
   }
 };

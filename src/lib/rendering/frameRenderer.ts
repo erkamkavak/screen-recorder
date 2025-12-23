@@ -41,6 +41,8 @@ export interface FrameRenderConfig {
         showMouse: boolean;
         showClicks: boolean;
         showCaptions: boolean;
+        captionFontSize: number;
+        captionColor: string;
     };
 }
 
@@ -171,6 +173,8 @@ export const renderFrameContent = (
                 canvasSize: config.canvasSize,
                 timeSec: currentTime,
                 segments: config.captions,
+                fontSize: toggles.captionFontSize,
+                color: toggles.captionColor,
             });
         }
     }

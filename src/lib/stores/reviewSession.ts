@@ -16,6 +16,8 @@ export interface ReviewSessionState {
     selectedResolutionPreset: ResolutionPresetId;
     selectedFrameRatePreset: FrameRatePresetId;
     showCaptions: boolean;
+    captionFontSize: number;
+    captionColor: string;
 }
 
 const DEFAULT_STATE: ReviewSessionState = {
@@ -29,6 +31,8 @@ const DEFAULT_STATE: ReviewSessionState = {
     selectedResolutionPreset: "scale-100",
     selectedFrameRatePreset: "fps-original",
     showCaptions: true,
+    captionFontSize: 46,
+    captionColor: "#ffffff",
 };
 
 function createReviewSessionStore() {
@@ -49,6 +53,8 @@ function createReviewSessionStore() {
         setSelectedResolutionPreset: (v: ResolutionPresetId) => update(s => ({ ...s, selectedResolutionPreset: v })),
         setSelectedFrameRatePreset: (v: FrameRatePresetId) => update(s => ({ ...s, selectedFrameRatePreset: v })),
         setShowCaptions: (v: boolean) => update(s => ({ ...s, showCaptions: v })),
+        setCaptionFontSize: (v: number) => update(s => ({ ...s, captionFontSize: v })),
+        setCaptionColor: (v: string) => update(s => ({ ...s, captionColor: v })),
     };
 }
 

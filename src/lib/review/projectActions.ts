@@ -13,7 +13,7 @@ import {
 } from "../stores";
 import { timelineStore } from "../stores/timeline";
 import { reviewSessionStore } from "../stores/reviewSession";
-import { transcriptionSettings, transcriptionResult } from "../stores/transcription";
+import { transcriptionSettings, transcriptionVersions, activeTranscriptionId, transcriptionResult } from "../stores/transcription";
 import { backendAPI } from "../backend/backendAPI";
 import { render as renderVideo, type RenderResult } from "../rendering";
 import { getResolutionPresets, frameRatePresets } from "../rendering/renderPresets";
@@ -53,6 +53,10 @@ export const saveProject = async (isSaving: (v: boolean) => void, onSaved: () =>
             selectedResolutionPreset: session.selectedResolutionPreset,
             selectedFrameRatePreset: session.selectedFrameRatePreset,
             showCaptions: session.showCaptions,
+            captionFontSize: session.captionFontSize,
+            captionColor: session.captionColor,
+            transcriptionVersions: get(transcriptionVersions),
+            activeTranscriptionId: get(activeTranscriptionId),
         });
 
         const recordingWithSegments = { ...recording, segments, reviewState };
@@ -110,6 +114,10 @@ export const continueRecording = () => {
         selectedResolutionPreset: session.selectedResolutionPreset,
         selectedFrameRatePreset: session.selectedFrameRatePreset,
         showCaptions: session.showCaptions,
+        captionFontSize: session.captionFontSize,
+        captionColor: session.captionColor,
+        transcriptionVersions: get(transcriptionVersions),
+        activeTranscriptionId: get(activeTranscriptionId),
     });
 
     currentProject.set({
@@ -179,6 +187,8 @@ export const downloadEditedVideo = async (
                     showMouse: session.includePointerTrack,
                     showClicks: session.includeClickTrack,
                     showCaptions: session.showCaptions,
+                    captionFontSize: session.captionFontSize,
+                    captionColor: session.captionColor,
                     includeAudio: session.includeAudioTrack,
                 },
                 captions: get(transcriptionResult)?.segments ?? undefined,
