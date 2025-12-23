@@ -22,6 +22,7 @@
     isPaywallEnabled,
   } from "./lib/stores/license";
   import PricingModal from "./components/features/licensing/PricingModal.svelte";
+  import FeedbackModal from "./components/features/feedback/FeedbackModal.svelte";
   import UpdaterNotification from "./components/features/updates/UpdaterNotification.svelte";
   import {
     createRecordingController,
@@ -74,6 +75,8 @@
 
   let showPricingModal = false;
   const togglePricing = () => (showPricingModal = !showPricingModal);
+
+  let showFeedbackModal = false;
 
   onMount(() => {
     // Check license validity on startup
@@ -207,6 +210,28 @@
               </button>
             {/if}
 
+            <button
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white/90 px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm backdrop-blur transition hover:bg-white"
+              on:click={() => (showFeedbackModal = true)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="18"
+                height="18"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                />
+              </svg>
+              <span>Feedback</span>
+            </button>
+
             <div class="relative">
               <button
                 type="button"
@@ -275,5 +300,10 @@
   <PricingModal
     show={showPricingModal}
     on:close={() => (showPricingModal = false)}
+  />
+
+  <FeedbackModal
+    show={showFeedbackModal}
+    on:close={() => (showFeedbackModal = false)}
   />
 </div>
