@@ -8,6 +8,9 @@ use std::{
     thread,
 };
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use crate::{
     capture::RecordingOptions,
     mouse_events::start_mouse_button_listener,
