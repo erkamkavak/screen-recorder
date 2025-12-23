@@ -22,7 +22,12 @@ rdev = "0.5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
+transcribe-rs = { version = "0.2", features = ["parakeet"], default-features = false }
+flate2 = "1.0"
+tar = "0.4"
+futures-util = "0.3"
+dirs = "5.0"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 x11rb = { version = "0.13", features = ["xfixes"] }

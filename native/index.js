@@ -310,7 +310,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { listSources, startCapture, stopCapture, pollFrame, getRecordingMouseEvents, clearRecordingMouseEvents, getCurrentMousePosition, startRecording, stopRecording, transcriptionListProviders, transcriptionCancel, transcriptionGetJob, transcriptionGetResult, transcriptionSubmit } = nativeBinding
+const { listSources, startCapture, stopCapture, pollFrame, getRecordingMouseEvents, clearRecordingMouseEvents, getCurrentMousePosition, startRecording, stopRecording, EngineType, modelListAvailable, modelGetInfo, modelGetPath, modelDownload, modelCancelDownload, modelDelete, modelRefreshStatus, transcriptionListProviders, transcriptionCancel, transcriptionGetJob, transcriptionGetResult, transcriptionSubmit } = nativeBinding
 
 module.exports.listSources = listSources
 module.exports.startCapture = startCapture
@@ -321,6 +321,14 @@ module.exports.clearRecordingMouseEvents = clearRecordingMouseEvents
 module.exports.getCurrentMousePosition = getCurrentMousePosition
 module.exports.startRecording = startRecording
 module.exports.stopRecording = stopRecording
+module.exports.EngineType = EngineType
+module.exports.modelListAvailable = modelListAvailable
+module.exports.modelGetInfo = modelGetInfo
+module.exports.modelGetPath = modelGetPath
+module.exports.modelDownload = modelDownload
+module.exports.modelCancelDownload = modelCancelDownload
+module.exports.modelDelete = modelDelete
+module.exports.modelRefreshStatus = modelRefreshStatus
 module.exports.transcriptionListProviders = transcriptionListProviders
 module.exports.transcriptionCancel = transcriptionCancel
 module.exports.transcriptionGetJob = transcriptionGetJob

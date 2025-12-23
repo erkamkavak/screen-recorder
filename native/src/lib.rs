@@ -22,3 +22,7 @@ pub use transcription::{
     transcription_list_providers, transcription_submit, SubmitTranscriptionRequest, Transcript,
     TranscriptSegment, TranscriptionJobInfo, TranscriptionJobSnapshot,
 };
+pub use transcription::model_manager::{
+    model_cancel_download, model_delete, model_download, model_get_info, model_get_path,
+    model_list_available, model_refresh_status, DownloadProgress, ModelInfo,
+};

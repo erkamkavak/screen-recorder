@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::state::TOKIO_RUNTIME;
 
+pub(crate) mod model_manager;
 pub(crate) mod providers;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -119,7 +120,7 @@ fn get_job(job_id: &str) -> Option<TranscriptionJobSnapshot> {
 
 #[napi]
 pub fn transcription_list_providers() -> Vec<String> {
-    vec!["soniox".to_string(), "noop".to_string()]
+    vec!["soniox".to_string(), "parakeet".to_string(), "local".to_string(), "noop".to_string()]
 }
 
 #[napi]
@@ -173,12 +174,18 @@ pub fn transcription_submit(req: SubmitTranscriptionRequest) -> Result<Transcrip
     TOKIO_RUNTIME.spawn(async move {
         let run_res = match provider_for_job.as_str() {
             "soniox" => providers::soniox::run_soniox(job_id_clone.clone(), req).await,
+            "parakeet" => providers::local::run_parakeet(job_id_clone.clone(), req).await,
+            "local" => providers::local::run_local(job_id_clone.clone(), req).await,
             "noop" => run_noop(job_id_clone.clone(), req).await,
             _ => Err(format!("Unknown provider: {}", provider_for_job)),
         };
 
         match run_res {
             Ok(transcript) => {
+                eprintln!("[TRANSCRIPTION] Job {} completed with {} segments", job_id_clone, transcript.segments.len());
+                for (i, seg) in transcript.segments.iter().enumerate() {
+                    eprintln!("[TRANSCRIPTION] Segment {}: text='{}' (len={})", i, &seg.text[..seg.text.len().min(50)], seg.text.len());
+                }
                 update_job(&job_id_clone, |job| {
                     if job.cancelled {
                         job.status = TranscriptionJobStatus::Cancelled;
@@ -190,6 +197,7 @@ pub fn transcription_submit(req: SubmitTranscriptionRequest) -> Result<Transcrip
                 });
             }
             Err(err) => {
+                eprintln!("[TRANSCRIPTION] Job {} failed: {}", job_id_clone, err);
                 update_job(&job_id_clone, |job| {
                     if job.cancelled {
                         job.status = TranscriptionJobStatus::Cancelled;

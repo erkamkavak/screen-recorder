@@ -45,6 +45,38 @@ export declare function clearRecordingMouseEvents(): void
 export declare function getCurrentMousePosition(): MouseEventRecord | null
 export declare function startRecording(options: RecordingOptions): string
 export declare function stopRecording(): string
+export const enum EngineType {
+  Whisper = 'Whisper',
+  Parakeet = 'Parakeet'
+}
+export interface ModelInfo {
+  id: string
+  name: string
+  description: string
+  filename: string
+  url?: string
+  sizeMb: number
+  isDownloaded: boolean
+  isDownloading: boolean
+  partialSize: number
+  isDirectory: boolean
+  engineType: string
+  accuracyScore: number
+  speedScore: number
+}
+export interface DownloadProgress {
+  modelId: string
+  downloaded: number
+  total: number
+  percentage: number
+}
+export declare function modelListAvailable(): Array<ModelInfo>
+export declare function modelGetInfo(modelId: string): ModelInfo | null
+export declare function modelGetPath(modelId: string): string
+export declare function modelDownload(modelId: string): boolean
+export declare function modelCancelDownload(modelId: string): boolean
+export declare function modelDelete(modelId: string): boolean
+export declare function modelRefreshStatus(): void
 export interface TranscriptSegment {
   startMs: number
   endMs: number
