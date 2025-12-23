@@ -39,6 +39,27 @@
     loadModels();
   }
 
+  // Handle model selection when provider changes
+  $: {
+    if (provider) {
+      if (isCloudProvider(provider)) {
+        // Cloud providers currently don't use the local model list
+        selectedModel = "";
+      } else if (isLocalProvider(provider)) {
+        // When switching between local providers, check if current model is still valid
+        const isCompatible = filteredModels.some((m) => m.id === selectedModel);
+        if (!isCompatible) {
+          const downloaded = filteredModels.find((m) => m.isDownloaded);
+          if (downloaded) {
+            selectedModel = downloaded.id;
+          } else {
+            selectedModel = "";
+          }
+        }
+      }
+    }
+  }
+
   const loadModels = async () => {
     loadingModels = true;
     try {
