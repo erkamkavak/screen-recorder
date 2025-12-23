@@ -42,6 +42,8 @@ pub fn start_ffmpeg_recording_internal(
     let (stop_tx, stop_rx) = std::sync::mpsc::channel::<()>();
     let size_arg = format!("{}x{}", width, height);
     let fps_arg = frame_rate.to_string();
+    let gop_frames = (frame_rate / 2).max(1).min(60);
+    let gop_arg = gop_frames.to_string();
     let output_path = file_path.to_string_lossy().to_string();
 
     let handle = thread::spawn(move || -> std::result::Result<(), String> {
@@ -79,6 +81,12 @@ pub fn start_ffmpeg_recording_internal(
                     "veryfast",
                     "-crf",
                     "14",
+                    "-g",
+                    &gop_arg,
+                    "-keyint_min",
+                    &gop_arg,
+                    "-sc_threshold",
+                    "0",
                     "-maxrate",
                     "16M",
                     "-bufsize",
