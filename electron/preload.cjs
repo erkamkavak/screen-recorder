@@ -65,6 +65,15 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getTranscriptionResult: (jobId) => ipcRenderer.invoke("native-transcription:get-result", jobId),
   cancelTranscription: (jobId) => ipcRenderer.invoke("native-transcription:cancel", jobId),
 
+  // Transcription model management APIs
+  listTranscriptionModels: () => ipcRenderer.invoke("native-transcription:list-models"),
+  getTranscriptionModelInfo: (modelId) => ipcRenderer.invoke("native-transcription:get-model-info", modelId),
+  getTranscriptionModelPath: (modelId) => ipcRenderer.invoke("native-transcription:get-model-path", modelId),
+  downloadTranscriptionModel: (modelId) => ipcRenderer.invoke("native-transcription:download-model", modelId),
+  cancelTranscriptionModelDownload: (modelId) => ipcRenderer.invoke("native-transcription:cancel-model-download", modelId),
+  deleteTranscriptionModel: (modelId) => ipcRenderer.invoke("native-transcription:delete-model", modelId),
+  refreshTranscriptionModelStatus: () => ipcRenderer.invoke("native-transcription:refresh-model-status"),
+
   // Notes overlay APIs
   showNotesOverlay: () => ipcRenderer.send("notes:show-overlay"),
   hideNotesOverlay: () => ipcRenderer.send("notes:hide-overlay"),

@@ -657,6 +657,92 @@ app.whenReady().then(() => {
     }
   });
 
+  // Transcription model management APIs
+  ipcMain.handle("native-transcription:list-models", async () => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.modelListAvailable();
+    } catch (error) {
+      console.error("Failed to list transcription models:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-transcription:get-model-info", async (_event, modelId) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.modelGetInfo(modelId);
+    } catch (error) {
+      console.error("Failed to get transcription model info:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-transcription:get-model-path", async (_event, modelId) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.modelGetPath(modelId);
+    } catch (error) {
+      console.error("Failed to get transcription model path:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-transcription:download-model", async (_event, modelId) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.modelDownload(modelId);
+    } catch (error) {
+      console.error("Failed to download transcription model:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-transcription:cancel-model-download", async (_event, modelId) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.modelCancelDownload(modelId);
+    } catch (error) {
+      console.error("Failed to cancel transcription model download:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-transcription:delete-model", async (_event, modelId) => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      return nativeAddon.modelDelete(modelId);
+    } catch (error) {
+      console.error("Failed to delete transcription model:", error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle("native-transcription:refresh-model-status", async () => {
+    if (!nativeAddon) {
+      throw new Error("Native addon not available");
+    }
+    try {
+      nativeAddon.modelRefreshStatus();
+      return true;
+    } catch (error) {
+      console.error("Failed to refresh transcription model status:", error);
+      throw error;
+    }
+  });
+
   ipcMain.on("update:install", () => {
     autoUpdater.quitAndInstall();
   });

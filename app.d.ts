@@ -82,6 +82,22 @@ declare global {
     progress?: number | null;
   }
 
+  interface TranscriptionModelInfo {
+    id: string;
+    name: string;
+    description: string;
+    filename: string;
+    url: string | null;
+    sizeMb: number;
+    isDownloaded: boolean;
+    isDownloading: boolean;
+    partialSize: number;
+    isDirectory: boolean;
+    engineType: string;
+    accuracyScore: number;
+    speedScore: number;
+  }
+
   interface ElectronAPI {
     // Desktop capture (Electron built-in)
     listDesktopSources?: (options?: DesktopCaptureOptions) => Promise<DesktopCaptureSourceSummary[]>;
@@ -125,6 +141,15 @@ declare global {
     getTranscriptionJob?: (jobId: string) => Promise<TranscriptionJobSnapshot | null>;
     getTranscriptionResult?: (jobId: string) => Promise<TranscriptionResult | null>;
     cancelTranscription?: (jobId: string) => Promise<boolean>;
+
+    // Transcription model management
+    listTranscriptionModels?: () => Promise<TranscriptionModelInfo[]>;
+    getTranscriptionModelInfo?: (modelId: string) => Promise<TranscriptionModelInfo | null>;
+    getTranscriptionModelPath?: (modelId: string) => Promise<string>;
+    downloadTranscriptionModel?: (modelId: string) => Promise<boolean>;
+    cancelTranscriptionModelDownload?: (modelId: string) => Promise<boolean>;
+    deleteTranscriptionModel?: (modelId: string) => Promise<boolean>;
+    refreshTranscriptionModelStatus?: () => Promise<boolean>;
 
     // Notes overlay
     showNotesOverlay?: () => void;
