@@ -148,6 +148,7 @@
       focusY: focus.y,
       easing: "ease-in-out",
       label: "Zoom",
+      followCursor: true,
     });
     zoomDraft = false;
   };

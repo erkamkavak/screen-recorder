@@ -12,6 +12,7 @@ export interface TimelineZoomEvent {
   zoom: number;
   easing?: "ease-in-out" | "ease" | "linear";
   label?: string;
+  followCursor?: boolean;
 }
 
 export type TimelineEvent = TimelineZoomEvent;

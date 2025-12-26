@@ -12,6 +12,7 @@ import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "../canvas
 import { drawCaptionsOverlay } from "../canvas/captions";
 import { drawClickRipplesOverlay, drawPointerCursorOverlay } from "../canvas/pointerOverlays";
 import { computeZoomState } from "../timeline/timelinePlayback";
+import { computeZoomFocusSimple, getCanvasNormalizedCursor } from "../zoom/zoomFollowState";
 import { computePointerState } from "../pointer/pointerState";
 
 /**
@@ -88,18 +89,22 @@ export const renderFrameContent = (
         config.generalLayoutState
     );
 
-    // Get pointer state at current time
+    // Get pointer state and normalize it to the canvas
     const pointerState = computePointerState(currentTime, pointerRecords);
-    const pointerHasActivity = placement && pointerState.visible;
-    const pointerPivotX = pointerHasActivity
-        ? placement.x + pointerState.x * placement.width
-        : null;
-    const pointerPivotY = pointerHasActivity
-        ? placement.y + pointerState.y * placement.height
-        : null;
-
+    const canvasCursor = getCanvasNormalizedCursor(pointerState, placement, canvas);
+    
     // Calculate zoom state from timeline events
-    const { scale, focusX, focusY } = computeZoomState(config.zoomEvents, currentTime);
+    const zoomState = computeZoomState(config.zoomEvents, currentTime);
+    
+    // Determine the effective focus point for zoom using shared logic
+    const { focusX: zoomFocusX, focusY: zoomFocusY, scale } = computeZoomFocusSimple(
+        zoomState.scale,
+        zoomState.focusX,
+        zoomState.focusY,
+        canvasCursor?.x ?? null,
+        canvasCursor?.y ?? null,
+        zoomState.followCursor ?? false
+    );
 
     // Clear and draw background first
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -107,21 +112,14 @@ export const renderFrameContent = (
     background.draw(drawArgs);
     ctx.globalCompositeOperation = "source-over";
 
-    // Apply zoom transform
+    // Apply the zoom transform
     ctx.save();
-    const pivotXNormalized =
-        pointerPivotX !== null && canvas.width > 0
-            ? Math.min(Math.max(pointerPivotX / canvas.width, 0), 1)
-            : focusX;
-    const pivotYNormalized =
-        pointerPivotY !== null && canvas.height > 0
-            ? Math.min(Math.max(pointerPivotY / canvas.height, 0), 1)
-            : focusY;
-    const pivotX = pivotXNormalized * canvas.width;
-    const pivotY = pivotYNormalized * canvas.height;
-    ctx.translate(pivotX, pivotY);
+    const centerX = canvas.width / 2;
+    const centerY = canvas.height / 2;
+    
+    ctx.translate(centerX, centerY);
     ctx.scale(scale, scale);
-    ctx.translate(-pivotX, -pivotY);
+    ctx.translate(-zoomFocusX * canvas.width, -zoomFocusY * canvas.height);
 
     // Draw screen share
     if (toggles.showScreen) {

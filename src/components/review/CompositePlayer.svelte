@@ -2,6 +2,7 @@
   import { onDestroy, onMount } from "svelte";
   import type { TimelineSnapshot } from "../../lib/stores/timeline";
   import { computeZoomState } from "../../lib/timeline/timelinePlayback";
+  import { computeZoomFocusSimple, getCanvasNormalizedCursor } from "../../lib/zoom/zoomFollowState";
   import { drawScreenShare, drawWebcam } from "../../lib/canvas/layoutDrawers";
   import {
     computePointerState,
@@ -452,12 +453,12 @@
   };
 
   const applyZoom = (scale: number, focusX: number, focusY: number) => {
-    if (!ctx) return;
-    const pivotX = focusX * canvasEl.width;
-    const pivotY = focusY * canvasEl.height;
-    ctx.translate(pivotX, pivotY);
+    if (!ctx || !canvasEl) return;
+    const centerX = canvasEl.width / 2;
+    const centerY = canvasEl.height / 2;
+    ctx.translate(centerX, centerY);
     ctx.scale(scale, scale);
-    ctx.translate(-pivotX, -pivotY);
+    ctx.translate(-focusX * canvasEl.width, -focusY * canvasEl.height);
   };
 
   const getPlacement = () => {
@@ -493,7 +494,7 @@
     ctx.globalCompositeOperation = "source-over";
 
     ctx.save();
-    const { scale, focusX, focusY } = computeZoomState(
+    const zoomState = computeZoomState(
       segmentZoomEvents,
       zoomEvalTimeSec
     );
@@ -501,8 +502,19 @@
       zoomEvalTimeSec,
       segmentPointerRecords
     );
-    const zoomFocusX = pointerState.visible ? pointerState.x : focusX;
-    const zoomFocusY = pointerState.visible ? pointerState.y : focusY;
+    const placement = getPlacement();
+    const canvasCursor = getCanvasNormalizedCursor(pointerState, placement, canvasEl);
+    
+    // Determine the effective focus point for zoom using shared logic
+    const { focusX: zoomFocusX, focusY: zoomFocusY, scale } = computeZoomFocusSimple(
+        zoomState.scale,
+        zoomState.focusX,
+        zoomState.focusY,
+        canvasCursor?.x ?? null,
+        canvasCursor?.y ?? null,
+        zoomState.followCursor ?? false
+    );
+    
     applyZoom(scale, zoomFocusX, zoomFocusY);
     if (true) {
       // Always show screen if it's there

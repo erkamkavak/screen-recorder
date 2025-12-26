@@ -69,6 +69,7 @@ export const createZoomEditorController = (options: ZoomEditorControllerOptions)
       focusY: lastPointer.y,
       zoom: ZOOM_DEFAULT_SCALE,
       label: "Keyboard zoom",
+      followCursor: true,
     });
     const selected = get(timelineStore).selectedEvent;
     if (selected) {

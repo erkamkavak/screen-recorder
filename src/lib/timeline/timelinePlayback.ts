@@ -90,6 +90,7 @@ export interface ZoomState {
   scale: number;
   focusX: number;
   focusY: number;
+  followCursor: boolean;
 }
 
 export const computeZoomState = (
@@ -99,12 +100,13 @@ export const computeZoomState = (
   const mergedEvents = mergeZoomEvents(events ?? []);
   const zoom = mergedEvents.length ? findActiveZoom(mergedEvents, currentTime) : null;
   if (!zoom) {
-    return { zoom: null, scale: 1, focusX: 0.5, focusY: 0.5 };
+    return { zoom: null, scale: 1, focusX: 0.5, focusY: 0.5, followCursor: false };
   }
 
   const scale = computeZoomScale(zoom, currentTime);
   const focusX = typeof zoom.focusX === "number" ? zoom.focusX : 0.5;
   const focusY = typeof zoom.focusY === "number" ? zoom.focusY : 0.5;
+  const followCursor = zoom.followCursor ?? true; // Default to true for better UX
 
-  return { zoom, scale, focusX, focusY };
+  return { zoom, scale, focusX, focusY, followCursor };
 };
