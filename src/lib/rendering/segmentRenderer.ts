@@ -3,7 +3,7 @@
  * Handles loading and coordinating multiple video segments for rendering
  */
 
-import { Input, MP4, WEBM, UrlSource, VideoSampleSink } from "mediabunny";
+import { Input, MP4, WEBM, UrlSource, VideoSampleSink, AudioSampleSink } from "mediabunny";
 import type { VideoSample } from "mediabunny";
 import type { RecordingSegment, RecordingAssets } from "../stores";
 import { getAssetUrlFromFile } from "../backend/assetStorage";
@@ -17,8 +17,10 @@ export interface SegmentSource {
     webcamInput: Input | null;
     screenSink: VideoSampleSink;
     webcamSink: VideoSampleSink | null;
+    audioSink: AudioSampleSink | null;
     screenVideo: HTMLVideoElement;
     webcamVideo: HTMLVideoElement | null;
+    audioInput: Input | null;
 }
 
 export interface SegmentTimeInfo {
@@ -144,8 +146,24 @@ export const loadSegmentSources = async (
 
             const webcamTrack = webcamInput ? await webcamInput.getPrimaryVideoTrack() : null;
 
+            // Load audio track (can be in screen recording or separate audio file)
+            let audioInput: Input | null = null;
+            let audioTrack: any = await screenInput.getPrimaryAudioTrack().catch(() => null);
+
+            if (!audioTrack && segment.assets.audio) {
+                const audioUrl = await getAssetUrlFromFile(segment.assets.audio.filePath);
+                if (audioUrl) {
+                    audioInput = new Input({
+                        formats: [MP4, WEBM],
+                        source: new UrlSource(audioUrl),
+                    });
+                    audioTrack = await audioInput.getPrimaryAudioTrack().catch(() => null);
+                }
+            }
+
             const screenSink = new VideoSampleSink(screenTrack);
             const webcamSink = webcamTrack ? new VideoSampleSink(webcamTrack) : null;
+            const audioSink = audioTrack ? new AudioSampleSink(audioTrack) : null;
 
             sources.push({
                 segment,
@@ -155,8 +173,10 @@ export const loadSegmentSources = async (
                 webcamInput,
                 screenSink,
                 webcamSink,
+                audioSink,
                 screenVideo,
                 webcamVideo,
+                audioInput,
             });
         } catch (error) {
             console.error(`Failed to load segment ${segment.id}:`, error);
@@ -173,6 +193,7 @@ export const disposeSegmentSources = (sources: SegmentSource[]) => {
     for (const source of sources) {
         try { source.screenInput.dispose(); } catch { }
         try { source.webcamInput?.dispose(); } catch { }
+        try { source.audioInput?.dispose(); } catch { }
         try {
             source.screenVideo.src = "";
             source.screenVideo.load();

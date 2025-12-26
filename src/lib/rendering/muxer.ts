@@ -7,6 +7,7 @@ import {
     Mp4OutputFormat,
     BufferTarget,
     EncodedVideoPacketSource,
+    EncodedAudioPacketSource,
     EncodedPacket,
 } from "mediabunny";
 
@@ -16,12 +17,13 @@ import {
 export interface MuxerState {
     output: Output;
     videoPacketSource: EncodedVideoPacketSource;
+    audioPacketSource?: EncodedAudioPacketSource;
 }
 
 /**
  * Create a new muxer for MP4 output
  */
-export const createMuxer = (frameRate: number): MuxerState => {
+export const createMuxer = (frameRate: number, hasAudio = false, audioCodec = "aac"): MuxerState => {
     const output = new Output({
         format: new Mp4OutputFormat(),
         target: new BufferTarget(),
@@ -30,7 +32,13 @@ export const createMuxer = (frameRate: number): MuxerState => {
     const videoPacketSource = new EncodedVideoPacketSource("avc");
     output.addVideoTrack(videoPacketSource, { frameRate });
 
-    return { output, videoPacketSource };
+    let audioPacketSource: EncodedAudioPacketSource | undefined;
+    if (hasAudio) {
+        audioPacketSource = new EncodedAudioPacketSource(audioCodec as any);
+        output.addAudioTrack(audioPacketSource);
+    }
+
+    return { output, videoPacketSource, audioPacketSource };
 };
 
 /**
@@ -45,11 +53,11 @@ export const startMuxer = async (state: MuxerState): Promise<void> => {
  */
 export const addEncodedChunk = async (
     state: MuxerState,
-    chunk: EncodedVideoChunk,
+    chunk: EncodedVideoChunk | EncodedAudioChunk,
     isFirst: boolean,
-    decoderConfig?: VideoDecoderConfig
+    decoderConfig?: VideoDecoderConfig | AudioDecoderConfig
 ): Promise<void> => {
-    // Convert EncodedVideoChunk to mediabunny EncodedPacket
+    // Convert EncodedChunk to mediabunny EncodedPacket
     const data = new Uint8Array(chunk.byteLength);
     chunk.copyTo(data);
 
@@ -60,19 +68,37 @@ export const addEncodedChunk = async (
         (chunk.duration ?? 0) / 1_000_000 // Convert μs to seconds
     );
 
+    const isVideo = chunk instanceof EncodedVideoChunk;
+    const source = isVideo ? state.videoPacketSource : state.audioPacketSource;
+
+    if (!source) return;
+
     // First packet needs decoder config metadata
     if (isFirst && decoderConfig) {
-        await state.videoPacketSource.add(packet, {
-            decoderConfig: {
-                codec: decoderConfig.codec,
-                codedWidth: decoderConfig.codedWidth,
-                codedHeight: decoderConfig.codedHeight,
-                description: decoderConfig.description,
-                colorSpace: decoderConfig.colorSpace,
-            },
-        });
+        if (isVideo) {
+            const videoConfig = decoderConfig as VideoDecoderConfig;
+            await (source as EncodedVideoPacketSource).add(packet, {
+                decoderConfig: {
+                    codec: videoConfig.codec,
+                    codedWidth: videoConfig.codedWidth,
+                    codedHeight: videoConfig.codedHeight,
+                    description: videoConfig.description,
+                    colorSpace: videoConfig.colorSpace,
+                },
+            });
+        } else {
+            const audioConfig = decoderConfig as AudioDecoderConfig;
+            await (source as EncodedAudioPacketSource).add(packet, {
+                decoderConfig: {
+                    codec: audioConfig.codec,
+                    sampleRate: audioConfig.sampleRate,
+                    numberOfChannels: audioConfig.numberOfChannels,
+                    description: audioConfig.description,
+                },
+            });
+        }
     } else {
-        await state.videoPacketSource.add(packet);
+        await source.add(packet);
     }
 };
 
@@ -81,6 +107,7 @@ export const addEncodedChunk = async (
  */
 export const finalizeMuxer = async (state: MuxerState): Promise<Blob> => {
     state.videoPacketSource.close();
+    state.audioPacketSource?.close();
     await state.output.finalize();
 
     const buffer = (state.output.target as BufferTarget).buffer;
@@ -91,8 +118,9 @@ export const finalizeMuxer = async (state: MuxerState): Promise<Blob> => {
  * Encoded chunk with metadata for batch muxing
  */
 export interface EncodedChunkWithMeta {
-    chunk: EncodedVideoChunk;
-    meta?: EncodedVideoChunkMetadata;
+    chunk: EncodedVideoChunk | EncodedAudioChunk;
+    meta?: EncodedVideoChunkMetadata | EncodedAudioChunkMetadata;
+    type: "video" | "audio";
 }
 
 /**
@@ -102,19 +130,42 @@ export const muxEncodedChunks = async (
     chunks: EncodedChunkWithMeta[],
     frameRate: number
 ): Promise<Blob> => {
-    const state = createMuxer(frameRate);
+    const audioChunk = chunks.find((c) => c.type === "audio");
+    const hasAudio = !!audioChunk;
+
+    // Detect audio codec from chunks if possible
+    let audioCodec = "aac";
+    if (audioChunk && audioChunk.meta && "decoderConfig" in audioChunk.meta) {
+        const config = audioChunk.meta.decoderConfig as AudioDecoderConfig;
+        if (config.codec.includes("opus")) {
+            audioCodec = "opus";
+        }
+    }
+
+    const state = createMuxer(frameRate, hasAudio, audioCodec);
     await startMuxer(state);
 
-    // Sort chunks by timestamp (decode order should match presentation order for AVC baseline)
+    // Sort chunks by timestamp (presentation order)
     const sortedChunks = [...chunks].sort((a, b) => a.chunk.timestamp - b.chunk.timestamp);
 
-    // Find the first chunk with decoder config
-    const firstMeta = sortedChunks.find((c) => c.meta?.decoderConfig)?.meta;
+    // Track if we've sent the first chunk of each type to include decoder config
+    let firstVideoSent = false;
+    let firstAudioSent = false;
 
-    for (let i = 0; i < sortedChunks.length; i++) {
-        const { chunk } = sortedChunks[i];
-        const isFirst = i === 0;
-        await addEncodedChunk(state, chunk, isFirst, firstMeta?.decoderConfig);
+    for (const { chunk, meta, type } of sortedChunks) {
+        if (type === "video") {
+            const isFirst = !firstVideoSent;
+            const videoChunk = chunk as EncodedVideoChunk;
+            const videoMeta = meta as EncodedVideoChunkMetadata;
+            await addEncodedChunk(state, videoChunk, isFirst, videoMeta?.decoderConfig);
+            if (isFirst) firstVideoSent = true;
+        } else {
+            const isFirst = !firstAudioSent;
+            const audioChunk = chunk as EncodedAudioChunk;
+            const audioMeta = meta as EncodedAudioChunkMetadata;
+            await addEncodedChunk(state, audioChunk, isFirst, audioMeta?.decoderConfig);
+            if (isFirst) firstAudioSent = true;
+        }
     }
 
     return finalizeMuxer(state);

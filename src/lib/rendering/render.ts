@@ -3,7 +3,7 @@
  * Coordinates video loading, frame rendering, encoding, and muxing
  */
 
-import { Input, MP4, WEBM, UrlSource, VideoSampleSink } from "mediabunny";
+import { Input, MP4, WEBM, UrlSource, VideoSampleSink, AudioSampleSink } from "mediabunny";
 import type { VideoSample } from "mediabunny";
 
 import type {
@@ -31,6 +31,7 @@ import {
     getTotalSegmentsDuration,
     type SegmentSource,
 } from "./segmentRenderer";
+import { processAudioSegments, type AudioProcessingSegment } from "./audioProcessor";
 
 import cursorPackCursor from "../../assets/cursors/cutecore-pink-cursor.png?url";
 import cursorPackPointer from "../../assets/cursors/cutecore-pink-pointer.png?url";
@@ -117,12 +118,25 @@ export const render = async (
         : null;
 
     const screenTrack = await screenInput.getPrimaryVideoTrack();
+    const screenAudioTrack = await screenInput.getPrimaryAudioTrack().catch(() => null);
+    console.log(`[Render] Screen tracks: Video=${!!screenTrack}, Audio=${!!screenAudioTrack}`);
+
     if (!screenTrack) {
         screenInput.dispose();
         webcamInput?.dispose();
         throw new Error("Unable to render: screen asset has no video track");
     }
     const webcamTrack = webcamInput ? await webcamInput.getPrimaryVideoTrack() : null;
+
+    // Load separate audio if it exists ($lastRecording.assets.audio)
+    const audioAsset = assets.audio;
+    const audioUrl = audioAsset ? await loadAssetUrl(audioAsset) : null;
+    const audioInput = audioUrl ? new Input({
+        formats: [MP4, WEBM],
+        source: new UrlSource(audioUrl),
+    }) : null;
+    const separateAudioTrack = audioInput ? await audioInput.getPrimaryAudioTrack().catch(() => null) : null;
+    console.log(`[Render] Separate audio track: ${!!separateAudioTrack}`);
 
     const screenSink = new VideoSampleSink(screenTrack);
     const webcamSink = webcamTrack ? new VideoSampleSink(webcamTrack) : null;
@@ -215,7 +229,7 @@ export const render = async (
         canvasHeight,
         frameRate,
         (chunk, meta) => {
-            encodedChunks.push({ chunk, meta });
+            encodedChunks.push({ chunk, meta, type: "video" });
         },
         (e) => {
             console.error("[Render] Encoder error:", e);
@@ -234,6 +248,9 @@ export const render = async (
         } catch { }
         try {
             webcamInput?.dispose();
+        } catch { }
+        try {
+            audioInput?.dispose();
         } catch { }
 
         try {
@@ -259,6 +276,24 @@ export const render = async (
         let totalRenderMs = 0;
         let totalEncodeQueueMs = 0;
         const startTime = performance.now();
+
+        // Phase 0: Audio processing (incremental)
+        if (options.toggles.includeAudio && (screenAudioTrack || separateAudioTrack)) {
+            console.log("[Render] Phase 0: Processing audio...");
+            const sourceTrack = separateAudioTrack || screenAudioTrack;
+            if (sourceTrack) {
+                const audioSink = new AudioSampleSink(sourceTrack);
+                const audioSegments: AudioProcessingSegment[] = [{
+                    sink: audioSink,
+                    trimStartUs: Math.round(trimStart * 1_000_000),
+                    trimEndUs: Math.round(trimEnd * 1_000_000),
+                    timelineOffsetUs: 0
+                }];
+
+                await processAudioSegments(audioSegments, encodedChunks, cancelToken);
+                console.log("[Render] Audio processing complete");
+            }
+        }
 
         // Phase 1: Render all frames and queue to encoder (non-blocking)
         console.log("[Render] Phase 1: Rendering and queueing frames...");
@@ -536,7 +571,7 @@ const renderMultiSegment = async (
         canvasHeight,
         frameRate,
         (chunk, meta) => {
-            encodedChunks.push({ chunk, meta });
+            encodedChunks.push({ chunk, meta, type: "video" });
         },
         (e) => {
             console.error("[Render] Encoder error:", e);
@@ -567,6 +602,30 @@ const renderMultiSegment = async (
         let totalRenderMs = 0;
         let totalEncodeQueueMs = 0;
         const startTime = performance.now();
+
+        // Phase 0: Audio processing for multi-segment
+        if (options.toggles.includeAudio) {
+            console.log("[Render] Phase 0: Processing multi-segment audio...");
+            const audioSegments: AudioProcessingSegment[] = [];
+            let timelineOffsetUs = 0;
+
+            for (const source of segmentSources) {
+                if (source.audioSink) {
+                    const seg = source.segment;
+                    audioSegments.push({
+                        sink: source.audioSink,
+                        trimStartUs: Math.round(seg.trimStart * 1000),
+                        trimEndUs: Math.round((seg.duration - seg.trimEnd) * 1000),
+                        timelineOffsetUs
+                    });
+                }
+                const effectiveDurationMs = source.segment.duration - source.segment.trimStart - source.segment.trimEnd;
+                timelineOffsetUs += Math.round(effectiveDurationMs * 1000);
+            }
+
+            await processAudioSegments(audioSegments, encodedChunks, cancelToken);
+            console.log("[Render] Multi-segment audio processing complete");
+        }
 
         console.log("[Render] Phase 1: Rendering multi-segment frames...");
 

@@ -128,6 +128,61 @@ export const createEncoder = (
 
     const config = createEncoderConfig(width, height, frameRate);
     configureEncoder(encoder, config);
+    return encoder;
+};
+
+/**
+ * Create and configure a new AudioEncoder
+ */
+export const createAudioEncoder = async (
+    params: { sampleRate: number; numberOfChannels: number },
+    onOutput: (chunk: EncodedAudioChunk, meta?: EncodedAudioChunkMetadata) => void,
+    onError: (error: DOMException) => void
+): Promise<AudioEncoder> => {
+    const encoder = new AudioEncoder({
+        output: onOutput,
+        error: onError,
+    });
+
+    const { sampleRate, numberOfChannels } = params;
+
+    const configs: AudioEncoderConfig[] = [
+        {
+            codec: "mp4a.40.2", // AAC-LC
+            numberOfChannels,
+            sampleRate,
+            bitrate: 128000,
+        },
+        {
+            codec: "opus",
+            numberOfChannels,
+            sampleRate,
+            bitrate: 128000,
+        }
+    ];
+
+    let supportedConfig: AudioEncoderConfig | null = null;
+
+    for (const config of configs) {
+        try {
+            const support = await AudioEncoder.isConfigSupported(config);
+            if (support.supported) {
+                supportedConfig = config;
+                break;
+            }
+        } catch (e) {
+            console.warn(`[Encoder] Check failed for ${config.codec}`, e);
+        }
+    }
+
+    if (!supportedConfig) {
+        // Fallback to first if none "officially" supported, or throw
+        console.warn("[Encoder] No audio codec explicitly supported, trying AAC-LC");
+        supportedConfig = configs[0];
+    }
+
+    console.log("[Encoder] Selected Audio Config:", supportedConfig);
+    encoder.configure(supportedConfig);
 
     return encoder;
 };
