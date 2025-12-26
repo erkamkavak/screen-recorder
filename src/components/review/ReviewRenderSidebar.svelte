@@ -9,13 +9,12 @@
   import { backendAPI } from "../../lib/backend/backendAPI";
   import {
     transcriptionSettings,
-    transcriptionJob,
-    transcriptionVersions,
-    activeTranscriptionId,
-    transcriptionResult,
   } from "../../lib/stores/transcription";
-
-  import { reviewSessionStore } from "../../lib/stores/reviewSession";
+  import { 
+    reviewSessionStore, 
+    transcriptionResult, 
+    pointerRecords 
+  } from "../../lib/stores/reviewSession";
   import type { RenderFormatOption } from "../../lib/review/reviewTypes";
   import { fade, scale } from "svelte/transition";
 
@@ -58,12 +57,12 @@
   };
 
   const cancelTranscriptionJob = async () => {
-    const jobId = $transcriptionJob.jobId;
+    const jobId = $reviewSessionStore.transcriptionJob.jobId;
     if (!jobId) return;
     try {
       await backendAPI.cancelTranscription(jobId);
     } catch {}
-    transcriptionJob.set({
+    reviewSessionStore.setTranscriptionJob({
       jobId: null,
       status: null,
       running: false,
@@ -96,7 +95,7 @@
       return;
     }
 
-    transcriptionJob.set({
+    reviewSessionStore.setTranscriptionJob({
       jobId: null,
       status: null,
       running: true,
@@ -114,13 +113,13 @@
         model: $transcriptionSettings.selectedModel || undefined,
       });
       jobId = job.jobId;
-      transcriptionJob.set({ jobId, status: null, running: true, error: null });
+      reviewSessionStore.setTranscriptionJob({ jobId, status: null, running: true, error: null });
 
       while (true) {
-        if (!$transcriptionJob.running || !jobId) return;
+        if (!$reviewSessionStore.transcriptionJob.running || !jobId) return;
         const status = await backendAPI.getTranscriptionJob(jobId);
         if (status) {
-          transcriptionJob.set({
+          reviewSessionStore.setTranscriptionJob({
             jobId,
             status,
             running: true,
@@ -128,7 +127,7 @@
           });
           if (status.status === "completed") break;
           if (status.status === "error" || status.status === "cancelled") {
-            transcriptionJob.set({
+            reviewSessionStore.setTranscriptionJob({
               jobId,
               status,
               running: false,
@@ -141,10 +140,11 @@
       }
 
       const result = await backendAPI.getTranscriptionResult(jobId);
-      if (result) {
+      if (result && $reviewSessionStore.transcriptionJob.running && $reviewSessionStore.transcriptionJob.jobId === jobId) {
         const versionId = crypto.randomUUID();
-        transcriptionVersions.update((v) => [
-          ...v,
+        const currentVersions = $reviewSessionStore.transcriptionVersions;
+        reviewSessionStore.setTranscriptionVersions([
+          ...currentVersions,
           {
             id: versionId,
             provider: $transcriptionSettings.provider,
@@ -153,16 +153,16 @@
             timestamp: Date.now(),
           },
         ]);
-        activeTranscriptionId.set(versionId);
+        reviewSessionStore.setActiveTranscriptionId(versionId);
       }
-      transcriptionJob.set({
+      reviewSessionStore.setTranscriptionJob({
         jobId,
-        status: $transcriptionJob.status,
+        status: $reviewSessionStore.transcriptionJob.status,
         running: false,
         error: null,
       });
     } catch (e) {
-      transcriptionJob.set({
+      reviewSessionStore.setTranscriptionJob({
         jobId,
         status: null,
         running: false,
@@ -368,20 +368,20 @@
               </svg>
               <span>Audio track unavailable</span>
             </div>
-          {:else if $transcriptionJob.running}
+          {:else if $reviewSessionStore.transcriptionJob.running}
             <div class="status-box running">
               <div class="loading-ring"></div>
               <div class="status-details">
                 <span class="status-main">Transcribing...</span>
-                {#if $transcriptionJob.status?.progress}
+                {#if $reviewSessionStore.transcriptionJob.status?.progress}
                   <div class="mini-progress-bg">
-                    <div class="mini-progress-fill" style="width: {Math.round(($transcriptionJob.status.progress || 0) * 100)}%"></div>
+                    <div class="mini-progress-fill" style="width: {Math.round(($reviewSessionStore.transcriptionJob.status.progress || 0) * 100)}%"></div>
                   </div>
                 {/if}
               </div>
               <button class="small-cancel-btn" on:click={cancelTranscriptionJob}>Stop</button>
             </div>
-          {:else if $transcriptionVersions.length > 0}
+          {:else if $reviewSessionStore.transcriptionVersions.length > 0}
             <div class="captions-visibility-row">
               <div class="visibility-info">
                 <span class="visibility-title">Overlay Captions</span>
@@ -399,8 +399,8 @@
                   <label class="field-label-small" for="version-select">Active Version</label>
                 </div>
                 <div class="select-wrapper-premium">
-                  <select id="version-select" value={$activeTranscriptionId} on:change={(e) => activeTranscriptionId.set(e.currentTarget.value)}>
-                    {#each $transcriptionVersions as v}
+                  <select id="version-select" value={$reviewSessionStore.activeTranscriptionId} on:change={(e) => reviewSessionStore.setActiveTranscriptionId(e.currentTarget.value)}>
+                    {#each $reviewSessionStore.transcriptionVersions as v}
                       <option value={v.id}>
                         {v.provider} {v.model ? `- ${v.model}` : ''} ({new Date(v.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })})
                       </option>
@@ -441,7 +441,7 @@
           {/if}
         </div>
 
-        {#if $transcriptionJob.error}
+        {#if $reviewSessionStore.transcriptionJob.error}
           <div class="error-alert">
             <svg
               width="14"
@@ -460,21 +460,21 @@
                 y2="12"
               /><line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
-            <span>{$transcriptionJob.error}</span>
+            <span>{$reviewSessionStore.transcriptionJob.error}</span>
           </div>
         {/if}
 
         <button
           class="transcribe-btn-premium"
           on:click={transcribeAudio}
-          disabled={$transcriptionJob.running || !hasAudio}
+          disabled={$reviewSessionStore.transcriptionJob.running || !hasAudio}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
             <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
             <line x1="12" y1="19" x2="12" y2="22"/>
           </svg>
-          <span>{$transcriptionVersions.length > 0 ? 'Generate New Transcription' : 'Start Transcription'}</span>
+          <span>{$reviewSessionStore.transcriptionVersions.length > 0 ? 'Generate New Transcription' : 'Start Transcription'}</span>
         </button>
       </div>
     {:else if activeTab === "export"}

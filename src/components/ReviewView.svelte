@@ -18,7 +18,7 @@
   import cursorPackPointer from "../assets/cursors/cutecore-pink-pointer.png?url";
   import { timelineStore } from "../lib/stores/timeline";
   import { onDestroy, onMount } from "svelte";
-  import { transcriptionSettings, transcriptionVersions, activeTranscriptionId } from "../lib/stores/transcription";
+  import { transcriptionSettings } from "../lib/stores/transcription";
   import {
     ZOOM_DEFAULT_DURATION,
     ZOOM_DEFAULT_SCALE,
@@ -144,8 +144,8 @@
         },
         setCaptionFontSize: reviewSessionStore.setCaptionFontSize,
         setCaptionColor: reviewSessionStore.setCaptionColor,
-        setTranscriptionVersions: transcriptionVersions.set,
-        setActiveTranscriptionId: activeTranscriptionId.set,
+        setTranscriptionVersions: reviewSessionStore.setTranscriptionVersions,
+        setActiveTranscriptionId: reviewSessionStore.setActiveTranscriptionId,
       });
       currentSnapshot = timelineStore.snapshot();
     } finally {
@@ -381,6 +381,7 @@
             focusY,
             zoom: ZOOM_DEFAULT_SCALE,
             label: "Click zoom",
+            followCursor: true,
           });
           return;
         }

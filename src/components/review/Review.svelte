@@ -14,7 +14,8 @@
   } from "../../lib/stores";
   import type { TimelineSnapshot } from "../../lib/stores/timeline";
   import { onDestroy, onMount } from "svelte";
-  import { transcriptionResult, transcriptionSettings } from "../../lib/stores/transcription";
+  import { transcriptionSettings } from "../../lib/stores/transcription";
+  import { transcriptionResult } from "../../lib/stores/reviewSession";
   import { computeReviewLayoutSizes } from "../../lib/review/layoutSizing";
   import type { RenderFormatOption, PointerIconOption } from "../../lib/review/reviewTypes";
 

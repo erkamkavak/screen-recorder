@@ -4,6 +4,7 @@
     appView,
     isRecording,
     currentProject,
+    lastRecording,
     showFloatingControls,
     recordingStartTime,
   } from "./lib/stores";
@@ -172,7 +173,10 @@
                 </div>
                 <button
                   class="ml-1 flex h-4 w-4 items-center justify-center rounded-md text-indigo-400 hover:bg-indigo-200 hover:text-indigo-600 dark:hover:bg-indigo-800 dark:hover:text-indigo-200 transition-colors"
-                  on:click={() => currentProject.set(null)}
+                  on:click={() => {
+                    currentProject.set(null);
+                    lastRecording.set(null);
+                  }}
                   title="Finish & Start New Project"
                 >
                   <svg

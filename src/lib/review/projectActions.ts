@@ -12,8 +12,7 @@ import {
     canvasDimensions
 } from "../stores";
 import { timelineStore } from "../stores/timeline";
-import { reviewSessionStore } from "../stores/reviewSession";
-import { transcriptionSettings, transcriptionVersions, activeTranscriptionId, transcriptionResult } from "../stores/transcription";
+import { reviewSessionStore, transcriptionResult } from "../stores/reviewSession";
 import { backendAPI } from "../backend/backendAPI";
 import { render as renderVideo, type RenderResult } from "../rendering";
 import { getResolutionPresets, frameRatePresets } from "../rendering/renderPresets";
@@ -55,8 +54,8 @@ export const saveProject = async (isSaving: (v: boolean) => void, onSaved: () =>
             showCaptions: session.showCaptions,
             captionFontSize: session.captionFontSize,
             captionColor: session.captionColor,
-            transcriptionVersions: get(transcriptionVersions),
-            activeTranscriptionId: get(activeTranscriptionId),
+            transcriptionVersions: session.transcriptionVersions,
+            activeTranscriptionId: session.activeTranscriptionId,
         });
 
         const recordingWithSegments = { ...recording, segments, reviewState };
@@ -116,8 +115,8 @@ export const continueRecording = () => {
         showCaptions: session.showCaptions,
         captionFontSize: session.captionFontSize,
         captionColor: session.captionColor,
-        transcriptionVersions: get(transcriptionVersions),
-        activeTranscriptionId: get(activeTranscriptionId),
+        transcriptionVersions: session.transcriptionVersions,
+        activeTranscriptionId: session.activeTranscriptionId,
     });
 
     currentProject.set({

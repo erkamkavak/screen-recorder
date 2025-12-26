@@ -1,5 +1,5 @@
-import { writable, derived } from "svelte/store";
-import type { TranscriptionJobSnapshot, TranscriptionResult } from "../backend/backendAPI";
+import { writable } from "svelte/store";
+import type { TranscriptionResult } from "../backend/backendAPI";
 
 export interface TranscriptionVersion {
   id: string;
@@ -44,21 +44,3 @@ const createTranscriptionSettingsStore = () => {
 };
 
 export const transcriptionSettings = createTranscriptionSettingsStore();
-
-export const transcriptionJob = writable<{
-  jobId: string | null;
-  status: TranscriptionJobSnapshot | null;
-  running: boolean;
-  error: string | null;
-}>({ jobId: null, status: null, running: false, error: null });
-
-export const transcriptionVersions = writable<TranscriptionVersion[]>([]);
-export const activeTranscriptionId = writable<string | null>(null);
-
-export const transcriptionResult = derived(
-  [transcriptionVersions, activeTranscriptionId],
-  ([$versions, $id]) => {
-    if (!$id) return $versions.length > 0 ? $versions[$versions.length - 1].result : null;
-    return $versions.find(v => v.id === $id)?.result ?? null;
-  }
-);

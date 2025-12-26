@@ -2,6 +2,8 @@ import { writable, derived, get } from "svelte/store";
 import type { ResolutionPresetId, FrameRatePresetId } from "../rendering/renderPresets";
 import { lastRecording, type PointerEventRecord } from "../stores";
 import { getPointerRecords } from "../pointer/pointerState";
+import type { TranscriptionVersion } from "./transcription";
+import type { TranscriptionJobSnapshot } from "../backend/backendAPI";
 
 export type RenderFormat = "mp4" | "webm";
 
@@ -18,6 +20,14 @@ export interface ReviewSessionState {
     showCaptions: boolean;
     captionFontSize: number;
     captionColor: string;
+    transcriptionVersions: TranscriptionVersion[];
+    activeTranscriptionId: string | null;
+    transcriptionJob: {
+        jobId: string | null;
+        status: TranscriptionJobSnapshot | null;
+        running: boolean;
+        error: string | null;
+    };
 }
 
 const DEFAULT_STATE: ReviewSessionState = {
@@ -33,6 +43,9 @@ const DEFAULT_STATE: ReviewSessionState = {
     showCaptions: true,
     captionFontSize: 46,
     captionColor: "#ffffff",
+    transcriptionVersions: [],
+    activeTranscriptionId: null,
+    transcriptionJob: { jobId: null, status: null, running: false, error: null },
 };
 
 function createReviewSessionStore() {
@@ -55,6 +68,12 @@ function createReviewSessionStore() {
         setShowCaptions: (v: boolean) => update(s => ({ ...s, showCaptions: v })),
         setCaptionFontSize: (v: number) => update(s => ({ ...s, captionFontSize: v })),
         setCaptionColor: (v: string) => update(s => ({ ...s, captionColor: v })),
+        setTranscriptionVersions: (v: TranscriptionVersion[]) => update(s => ({ ...s, transcriptionVersions: v })),
+        setActiveTranscriptionId: (v: string | null) => update(s => ({ ...s, activeTranscriptionId: v })),
+        setTranscriptionJob: (v: Partial<ReviewSessionState["transcriptionJob"]>) => update(s => ({ 
+            ...s, 
+            transcriptionJob: { ...s.transcriptionJob, ...v } 
+        })),
     };
 }
 
@@ -67,3 +86,12 @@ export const pointerRecords = derived(lastRecording, ($recording) => {
 export const sortedClickEventsStore = derived(pointerRecords, ($records) => {
     return $records.filter(r => r.kind === "click").sort((a, b) => a.t - b.t);
 });
+
+export const transcriptionResult = derived(
+    reviewSessionStore,
+    ($session) => {
+        const { transcriptionVersions, activeTranscriptionId } = $session;
+        if (!activeTranscriptionId) return transcriptionVersions.length > 0 ? transcriptionVersions[transcriptionVersions.length - 1].result : null;
+        return transcriptionVersions.find(v => v.id === activeTranscriptionId)?.result ?? null;
+    }
+);
