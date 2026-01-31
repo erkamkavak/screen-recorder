@@ -127,6 +127,7 @@
             model: $transcriptionSettings.selectedModel,
             result,
             timestamp: Date.now(),
+            sourceAudioPath: audioFilePath,
           },
         ]);
         reviewSessionStore.setActiveTranscriptionId(versionId);

@@ -7,6 +7,7 @@ export interface TranscriptionVersion {
   model: string;
   result: TranscriptionResult;
   timestamp: number;
+  sourceAudioPath?: string;
 }
 
 export type TranscriptionSettings = {
