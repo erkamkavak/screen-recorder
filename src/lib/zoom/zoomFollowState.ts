@@ -48,7 +48,7 @@ export const getCanvasNormalizedCursor = (
   placement: ScreenPlacement | null,
   canvasSize: { width: number; height: number }
 ): { x: number; y: number } | null => {
-  if (!cursorState || !cursorState.visible || !placement || canvasSize.width === 0 || canvasSize.height === 0) {
+  if (!cursorState || !placement || canvasSize.width === 0 || canvasSize.height === 0) {
     return null;
   }
   return {
@@ -163,7 +163,7 @@ const clamp = (value: number, min: number, max: number): number => {
  * Uses a "dead zone" approach where the camera only moves when
  * the cursor approaches the edges of the visible area.
  */
-const calculateFocusWithDeadZone = (
+export const calculateFocusWithDeadZone = (
   cursorPos: number,
   currentFocus: number,
   scale: number,
