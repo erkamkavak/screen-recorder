@@ -146,6 +146,7 @@
         setCaptionColor: reviewSessionStore.setCaptionColor,
         setTranscriptionVersions: reviewSessionStore.setTranscriptionVersions,
         setActiveTranscriptionId: reviewSessionStore.setActiveTranscriptionId,
+        setCinematicEffects: reviewSessionStore.setCinematicEffects,
       });
       currentSnapshot = timelineStore.snapshot();
     } finally {
@@ -381,7 +382,7 @@
             ),
             focusX,
             focusY,
-            zoom: ZOOM_DEFAULT_SCALE,
+            zoom: $reviewSessionStore.cinematicEffects.zoomScale,
             label: "Click zoom",
             followCursor: true,
           });
