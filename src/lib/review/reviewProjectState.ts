@@ -1,6 +1,7 @@
 import type { RecordingSegment } from "../stores";
 import type { TimelineSnapshot } from "../stores/timeline";
 import type { TranscriptionVersion } from "../stores/transcription";
+import type { CinematicEffectsConfig } from "../rendering/cinematicEffects";
 
 export type PersistedReviewState = {
   timeline?: TimelineSnapshot;
@@ -18,7 +19,7 @@ export type PersistedReviewState = {
   captionColor?: string;
   transcriptionVersions?: TranscriptionVersion[];
   activeTranscriptionId?: string | null;
-  cinematicEffects?: import("../rendering/cinematicEffects").CinematicEffectsConfig;
+  cinematicEffects?: CinematicEffectsConfig;
 };
 
 export const getSegmentsEffectiveDurationSec = (segments: RecordingSegment[] | null | undefined) => {
@@ -46,7 +47,7 @@ export const buildPersistedReviewState = (args: {
   captionColor: string;
   transcriptionVersions: TranscriptionVersion[];
   activeTranscriptionId: string | null;
-  cinematicEffects: import("../rendering/cinematicEffects").CinematicEffectsConfig;
+  cinematicEffects: CinematicEffectsConfig;
 }): PersistedReviewState => ({
   timeline: args.timeline,
   includePointerTrack: args.includePointerTrack,
@@ -93,7 +94,7 @@ export const applyPersistedReviewState = (args: {
   setCaptionColor: (v: string) => void;
   setTranscriptionVersions: (v: TranscriptionVersion[]) => void;
   setActiveTranscriptionId: (v: string | null) => void;
-  setCinematicEffects: (v: import("../rendering/cinematicEffects").CinematicEffectsConfig) => void;
+  setCinematicEffects: (v: CinematicEffectsConfig) => void;
 }): void => {
   const { state } = args;
 

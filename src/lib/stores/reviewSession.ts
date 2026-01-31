@@ -4,6 +4,7 @@ import { lastRecording, type PointerEventRecord } from "../stores";
 import { getPointerRecords } from "../pointer/pointerState";
 import type { TranscriptionVersion } from "./transcription";
 import type { TranscriptionJobSnapshot } from "../backend/backendAPI";
+import type { CinematicEffectsConfig } from "../rendering/cinematicEffects";
 
 export type RenderFormat = "mp4" | "webm";
 
@@ -28,7 +29,7 @@ export interface ReviewSessionState {
         running: boolean;
         error: string | null;
     };
-    cinematicEffects: import("../rendering/cinematicEffects").CinematicEffectsConfig;
+    cinematicEffects: CinematicEffectsConfig;
 }
 
 const DEFAULT_STATE: ReviewSessionState = {
