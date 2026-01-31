@@ -194,7 +194,9 @@
       mp4: supportsType("video/mp4;codecs=h264") || supportsType("video/mp4"),
       webm: supportsType("video/webm;codecs=vp9") || supportsType("video/webm"),
     };
-    if (!supportedRenderFormats[$reviewSessionStore.renderFormat]) {
+    if ($reviewSessionStore.renderFormat !== "mp4" && $reviewSessionStore.renderFormat !== "webm") {
+      reviewSessionStore.setRenderFormat("mp4" as any);
+    } else if (!supportedRenderFormats[$reviewSessionStore.renderFormat]) {
       const fallback = supportedRenderFormats.mp4 ? "mp4" : "webm";
       reviewSessionStore.setRenderFormat(fallback as any);
     }

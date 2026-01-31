@@ -1,77 +1,219 @@
 <script lang="ts">
-  import { fade } from "svelte/transition";
+  import { fade, scale } from "svelte/transition";
   export let isRecording: boolean = false;
   export let onExit: () => void = () => {};
 </script>
 
 <div
-  class="absolute inset-x-4 top-4 z-50 flex flex-col items-center justify-between gap-4 rounded-2xl border border-white/10 bg-black/80 p-4 shadow-2xl backdrop-blur-xl sm:flex-row sm:gap-6"
+  class="zoom-editor-overlay"
   transition:fade={{ duration: 200 }}
 >
-  <div class="flex items-center gap-4">
-    <div
-      class="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl bg-white/10 shadow-inner"
-    >
-      <div
-        class="h-2 w-2 rounded-full bg-white shadow-[0_0_8px_rgba(255,255,255,0.8)]"
-      />
+  <div class="editor-info">
+    <div class="editor-dot-w">
+      <div class="editor-dot" />
     </div>
-    <div class="min-w-0">
-      <h3 class="text-xs font-bold uppercase tracking-widest text-white/90">
-        Zoom Editor
-      </h3>
-      <p class="truncate text-[10px] font-medium text-slate-400">
-        Keyboard shortcuts enabled
-      </p>
+    <div class="editor-text">
+      <h3 class="editor-title">Zoom Editor</h3>
+      <p class="editor-subtitle">Keyboard shortcuts active</p>
     </div>
   </div>
 
-  <div class="flex flex-wrap items-center justify-center gap-4">
+  <div class="controls-w">
     {#if isRecording}
-      <div
-        class="flex items-center gap-1.5 rounded-full bg-rose-500/10 px-3 py-1 text-[9px] font-bold uppercase tracking-widest text-rose-400 border border-rose-500/20"
-      >
-        <span class="h-1 w-1 rounded-full bg-rose-500 animate-pulse" />
+      <div class="recording-indicator" transition:scale>
+        <span class="rec-dot" />
         Recording
       </div>
     {/if}
 
-    <div class="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
-      <div class="flex items-center gap-2 text-[10px] font-bold text-slate-300">
-        <kbd
-          class="flex min-w-[32px] items-center justify-center rounded-md border border-white/20 bg-white/10 px-1.5 py-1 font-mono text-[9px] text-white shadow-sm"
-          >SPACE</kbd
-        >
-        <span class="uppercase tracking-tighter opacity-50">Play</span>
+    <div class="shortcuts-grid">
+      <div class="shortcut">
+        <kbd>SPACE</kbd>
+        <span>Play</span>
       </div>
-      <div class="flex items-center gap-2 text-[10px] font-bold text-slate-300">
-        <kbd
-          class="flex min-w-[32px] items-center justify-center rounded-md border border-white/20 bg-white/10 px-1.5 py-1 font-mono text-[9px] text-white shadow-sm"
-          >← / →</kbd
-        >
-        <span class="uppercase tracking-tighter opacity-50">Seek</span>
+      <div class="shortcut">
+        <kbd>← / →</kbd>
+        <span>Seek</span>
       </div>
-      <div class="flex items-center gap-2 text-[10px] font-bold text-slate-300">
-        <kbd
-          class="flex min-w-[32px] items-center justify-center rounded-md border border-white/20 bg-white/10 px-1.5 py-1 font-mono text-[9px] text-white shadow-sm"
-          >Z</kbd
-        >
-        <span class="uppercase tracking-tighter opacity-50">Zoom</span>
+      <div class="shortcut">
+        <kbd>Z</kbd>
+        <span>Zoom</span>
       </div>
-      <div class="flex items-center gap-2 text-[10px] font-bold text-slate-300">
-        <kbd
-          class="flex min-w-[32px] items-center justify-center rounded-md border border-white/20 bg-white/10 px-1.5 py-1 font-mono text-[9px] text-white shadow-sm"
-          >ESC</kbd
-        >
-        <span class="uppercase tracking-tighter opacity-50">Exit</span>
+      <div class="shortcut">
+        <kbd>ESC</kbd>
+        <span>Exit</span>
       </div>
     </div>
   </div>
 
-  <button
-    class="flex h-10 w-full items-center justify-center rounded-xl bg-white px-6 text-[11px] font-black uppercase tracking-widest text-black transition-all hover:bg-slate-200 active:scale-95 sm:w-auto"
-    on:click={onExit}
-  >
+  <button class="done-btn" on:click={onExit}>
     Done
   </button>
 </div>
+
+<style>
+  .zoom-editor-overlay {
+    position: absolute;
+    top: 1.25rem;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 2rem;
+    padding: 0.625rem 1rem;
+    background: rgba(15, 23, 42, 0.9);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
+    min-width: max-content;
+  }
+
+  .editor-info {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .editor-dot-w {
+    display: flex;
+    height: 2rem;
+    width: 2rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  .editor-dot {
+    height: 0.5rem;
+    width: 0.5rem;
+    border-radius: 50%;
+    background: white;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.8);
+  }
+
+  .editor-text {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .editor-title {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: rgba(255, 255, 255, 0.95);
+  }
+
+  .editor-subtitle {
+    margin: 0;
+    font-size: 0.625rem;
+    font-weight: 500;
+    color: #94a3b8;
+  }
+
+  .controls-w {
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+  }
+
+  .recording-indicator {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.625rem;
+    background: rgba(244, 63, 94, 0.1);
+    border: 1px solid rgba(244, 63, 94, 0.2);
+    border-radius: 9999px;
+    font-size: 0.625rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #fb7185;
+  }
+
+  .rec-dot {
+    height: 0.375rem;
+    width: 0.375rem;
+    border-radius: 50%;
+    background: #f43f5e;
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+  }
+
+  .shortcuts-grid {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+  }
+
+  .shortcut {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #cbd5e1;
+    font-size: 0.6875rem;
+    font-weight: 700;
+  }
+
+  .shortcut kbd {
+    display: flex;
+    min-width: 1.75rem;
+    align-items: center;
+    justify-content: center;
+    padding: 0.25rem 0.375rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.5rem;
+    color: white;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  }
+
+  .shortcut span {
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+    opacity: 0.6;
+  }
+
+  .done-btn {
+    height: 2rem;
+    padding: 0 1rem;
+    background: white;
+    color: black;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.75rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .done-btn:hover {
+    background: #f1f5f9;
+    transform: translateY(-1px);
+  }
+
+  .done-btn:active {
+    transform: translateY(0) scale(0.95);
+  }
+
+  @media (max-width: 640px) {
+    .zoom-editor-overlay {
+      flex-direction: column;
+      gap: 1rem;
+      width: calc(100% - 2rem);
+    }
+  }
+</style>
