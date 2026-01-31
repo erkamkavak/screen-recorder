@@ -8,17 +8,7 @@
       "description": "Capture screen or windows with a native backend and a stable desktop app runtime.",
       "tags": ["rust", "electron", "capture"],
       "media": [
-        {
-          "type": "video",
-          "src": "media/native-capture.mp4",
-          "poster": "media/native-capture.png",
-          "alt": "Native screen and window capture"
-        },
-        {
-          "type": "image",
-          "src": "media/native-capture.png",
-          "alt": "Native capture interface screenshot"
-        }
+        { "type": "image", "src": "media/native-capture.png", "alt": "Native capture interface screenshot" }
       ]
     },
     {
@@ -28,7 +18,7 @@
       "summary": "Pick a capture source and see a live preview during recording.",
       "description": "Select a screen or window source and confirm everything looks right before hitting record.",
       "tags": ["preview", "sources"],
-      "media": [{ "type": "video", "src": "media/selection-preview.mp4", "poster": "media/selection-preview.png", "alt": "Selecting a source and previewing before recording" }]
+      "media": [{ "type": "image", "src": "media/selection-preview.png", "alt": "Selecting a source and previewing before recording" }]
     },
     {
       "id": "webcam-overlay",
@@ -37,7 +27,16 @@
       "summary": "Camera capture with a draggable overlay and layout controls.",
       "description": "Enable your webcam and drag it to position; adjust layout so it matches your style.",
       "tags": ["webcam", "overlay"],
-      "media": [{ "type": "video", "src": "media/webcam-overlay.mp4", "poster": "media/webcam-overlay.png", "alt": "Webcam overlay drag and layout" }]
+      "media": [{ "type": "image", "src": "media/webcam-overlay.png", "alt": "Webcam overlay drag and layout" }]
+    },
+    {
+      "id": "webcam-controls",
+      "group": "Recording",
+      "title": "Webcam Controls",
+      "summary": "Fine-tune webcam positioning, size, and border styling.",
+      "description": "Control webcam overlay appearance with rounded corners, shadows, and positioning options.",
+      "tags": ["webcam", "styling"],
+      "media": [{ "type": "image", "src": "media/webcam-controls.png", "alt": "Webcam styling controls" }]
     },
     {
       "id": "audio-mic",
@@ -46,7 +45,7 @@
       "summary": "Microphone capture and integrated audio processing.",
       "description": "Record narration from your microphone and keep it synced in exports.",
       "tags": ["audio", "mic"],
-      "media": [{ "type": "video", "src": "media/audio-mic.mp4", "poster": "media/audio-mic.png", "alt": "Microphone capture" }]
+      "media": [{ "type": "image", "src": "media/audio-mic.png", "alt": "Microphone capture" }]
     },
     {
       "id": "notes-overlay",
@@ -55,7 +54,10 @@
       "summary": "Add multiple notes during recording and switch using shortcuts.",
       "description": "Keep on-screen prompts while recording and flip between notes without breaking your flow.",
       "tags": ["notes", "shortcuts"],
-      "media": [{ "type": "video", "src": "media/notes-overlay.mp4", "poster": "media/notes-overlay.png", "alt": "Notes overlay during recording" }]
+      "media": [
+        { "type": "image", "src": "media/notes-overlay.png", "alt": "Notes overlay during recording" },
+        { "type": "image", "src": "media/notes-overlay-2.png", "alt": "Notes settings and multiple notes" }
+      ]
     },
     {
       "id": "floating-controls",
@@ -64,7 +66,7 @@
       "summary": "Start/stop from an external recorder overlay while focused on other apps.",
       "description": "Control recording without switching back to the main window.",
       "tags": ["overlay", "workflow"],
-      "media": [{ "type": "video", "src": "media/floating-controls.mp4", "poster": "media/floating-controls.png", "alt": "Floating start/stop controls overlay" }]
+      "media": [{ "type": "image", "src": "media/floating-controls.png", "alt": "Floating start/stop controls overlay" }]
     },
     {
       "id": "screenshot-export",
@@ -76,13 +78,22 @@
       "media": [{ "type": "image", "src": "media/screenshot-export.png", "alt": "Exporting a preview screenshot" }]
     },
     {
+      "id": "continue-recording",
+      "group": "Recording",
+      "title": "Continue Recording",
+      "summary": "Resume previous recording sessions seamlessly.",
+      "description": "Continue recording from where you left off with automatic session restoration.",
+      "tags": ["recording", "resume"],
+      "media": [{ "type": "image", "src": "media/continue-recording.png", "alt": "Continue recording from previous session" }]
+    },
+    {
       "id": "projects",
       "group": "Recording",
       "title": "Project Management",
       "summary": "Store and reopen previous recordings.",
       "description": "Return to previous sessions and keep work organized by project.",
       "tags": ["projects"],
-      "media": [{ "type": "video", "src": "media/projects.mp4", "poster": "media/projects.png", "alt": "Projects list and reopen recordings" }]
+      "media": [{ "type": "image", "src": "media/projects.png", "alt": "Projects list and reopen recordings" }]
     },
     {
       "id": "timeline-trim",
@@ -91,7 +102,18 @@
       "summary": "Timeline, segment management, and trimming.",
       "description": "Trim segments and review recordings with an editing-focused timeline experience.",
       "tags": ["timeline", "trim"],
-      "media": [{ "type": "video", "src": "media/timeline-trim.mp4", "poster": "media/timeline-trim.png", "alt": "Timeline trimming and segments" }]
+      "media": [
+        { "type": "image", "src": "media/review-workflow.png", "alt": "Full review workflow interface" }
+      ]
+    },
+    {
+      "id": "review-options",
+      "group": "Editing & Review",
+      "title": "Review Options",
+      "summary": "Configure playback and review settings.",
+      "description": "Customize review experience with playback speed, looping, and navigation options.",
+      "tags": ["review", "playback"],
+      "media": [{ "type": "image", "src": "media/review-options.png", "alt": "Review playback options" }]
     },
     {
       "id": "smart-zoom",
@@ -100,7 +122,7 @@
       "summary": "Click-to-zoom and timeline-based zoom events with cursor-follow logic.",
       "description": "Add zooms around important interactions and keep focus where it matters.",
       "tags": ["zoom", "clicks"],
-      "media": [{ "type": "video", "src": "media/smart-zoom.mp4", "poster": "media/smart-zoom.png", "alt": "Click-to-zoom and zoom events" }]
+      "media": [{ "type": "image", "src": "media/smart-zoom.png", "alt": "Click-to-zoom and zoom events" }]
     },
     {
       "id": "cursor-customization",
@@ -109,7 +131,16 @@
       "summary": "Highlight/replace cursor and import custom cursor packs.",
       "description": "Make the cursor easier to follow in demos by styling it or swapping in a custom pack.",
       "tags": ["cursor"],
-      "media": [{ "type": "video", "src": "media/cursor-customization.mp4", "poster": "media/cursor-customization.png", "alt": "Cursor customization and packs" }]
+      "media": [{ "type": "image", "src": "media/cursor-customization.png", "alt": "Cursor customization and packs" }]
+    },
+    {
+      "id": "layout-color-controls",
+      "group": "Editing & Review",
+      "title": "Layout Controls",
+      "summary": "Adjust padding, inset, and color layouts for your recordings.",
+      "description": "Control recording appearance with padding adjustments, color layouts, and sizing options.",
+      "tags": ["layout", "styling"],
+      "media": [{ "type": "image", "src": "media/layout-color-controls.png", "alt": "Layout and color controls" }]
     },
     {
       "id": "themes-backgrounds",
@@ -118,7 +149,9 @@
       "summary": "Backgrounds (solids, gradients, images) and visual themes.",
       "description": "Match your brand with theme colors and flexible backgrounds.",
       "tags": ["themes", "backgrounds"],
-      "media": [{ "type": "video", "src": "media/themes-backgrounds.mp4", "poster": "media/themes-backgrounds.png", "alt": "Themes and backgrounds" }]
+      "media": [
+        { "type": "image", "src": "media/background-control.png", "alt": "Background control settings" }
+      ]
     },
     {
       "id": "captions",
@@ -127,7 +160,10 @@
       "summary": "Transcription pipeline with adjustable caption styling.",
       "description": "Generate captions and control size, color, and visibility for readability.",
       "tags": ["captions", "transcription"],
-      "media": [{ "type": "video", "src": "media/captions.mp4", "poster": "media/captions.png", "alt": "Captions and styling" }]
+      "media": [
+        { "type": "image", "src": "media/captions.png", "alt": "Captions and styling" },
+        { "type": "image", "src": "media/captions-2.png", "alt": "Caption settings panel" }
+      ]
     },
     {
       "id": "cinematic-effects",
@@ -137,8 +173,8 @@
       "description": "Add professional polish with cursor smoothing, motion blur trails, seamless zoom transitions, and intelligent cursor hiding when idle.",
       "tags": ["effects", "cursor", "zoom", "animation"],
       "media": [
-        { "type": "video", "src": "media/cinematic-effects.mp4", "poster": "media/cinematic-effects.png", "alt": "Cinematic effects in action" },
-        { "type": "image", "src": "media/cinematic-effects.png", "alt": "Cinematic effects settings panel" }
+        { "type": "image", "src": "media/cinematic-effects.png", "alt": "Cinematic effects settings" },
+        { "type": "image", "src": "media/cinematic-effects-2.png", "alt": "Cinematic effects in action" }
       ]
     },
     {
@@ -146,9 +182,9 @@
       "group": "Export",
       "title": "Export Options",
       "summary": "Export MP4 (H.264), WebM (VP9), and GIF.",
-      "description": "Choose an output format based on where you’ll publish: web, social, or docs.",
+      "description": "Choose an output format based on where you'll publish: web, social, or docs.",
       "tags": ["mp4", "webm", "gif"],
-      "media": [{ "type": "video", "src": "media/export-formats.mp4", "poster": "media/export-formats.png", "alt": "Export formats" }]
+      "media": [{ "type": "image", "src": "media/export-formats.png", "alt": "Export formats" }]
     },
     {
       "id": "export-presets",
@@ -157,7 +193,7 @@
       "summary": "Resolution and frame-rate presets for exports.",
       "description": "Quickly pick settings like 1080p/4K and 30/60fps without manual math.",
       "tags": ["presets"],
-      "media": [{ "type": "video", "src": "media/export-presets.mp4", "poster": "media/export-presets.png", "alt": "Export presets" }]
+      "media": [{ "type": "image", "src": "media/layout-color-controls.png", "alt": "Export presets" }]
     },
     {
       "id": "render-control",
@@ -166,7 +202,7 @@
       "summary": "Track render progress and cancel when needed.",
       "description": "See progress during export and cancel long renders safely.",
       "tags": ["render", "progress"],
-      "media": [{ "type": "video", "src": "media/render-control.mp4", "poster": "media/render-control.png", "alt": "Render progress and cancel" }]
+      "media": [{ "type": "image", "src": "media/render-control.png", "alt": "Render progress and cancel" }]
     }
   ]
 }
