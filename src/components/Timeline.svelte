@@ -408,7 +408,7 @@
   };
 </script>
 
-<div class="timeline-container">
+<div class="timeline-container" data-testid="review-timeline">
   <TimelineToolbar
     bind:zoomDraft
     onToggleZoomDraft={() => (zoomDraft = !zoomDraft)}
@@ -428,6 +428,7 @@
     on:pointerdown={handleTrackPointerDown}
     on:click={handleTrackClick}
     bind:this={trackEl}
+    data-testid="timeline-track"
   >
     <TimelineMarkers {duration} {timeMarkers} />
 

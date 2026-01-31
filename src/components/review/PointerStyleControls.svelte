@@ -59,7 +59,7 @@
   $: selectedCursorPackSource = getSelectedCursorPackSource();
 </script>
 
-<div class="pointer-style-panel">
+<div class="pointer-style-panel" data-testid="cursor-style-section">
   <RangeInput
     name="pointerSize"
     title="Pointer size"
@@ -73,11 +73,12 @@
   <p class="pointer-hint">Choose a pointer shape below.</p>
   <div class="pointer-icon-options">
     {#each pointerIconOptions as option (option.id)}
-      <div class={`pointer-icon-option ${$reviewSessionStore.pointerIconSelection === option.id ? "active" : ""}`}>
+      <div class={`pointer-icon-option ${$reviewSessionStore.pointerIconSelection === option.id ? "active" : ""}`} data-testid="cursor-option">
         <button
           class="pointer-icon-option-main"
           type="button"
           on:click={() => handlePointerIconSelect(option.id)}
+          data-testid="cursor-select"
         >
           <span
             class="pointer-icon-option-preview"

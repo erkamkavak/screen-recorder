@@ -93,6 +93,7 @@
       class:active={activeTab === "layers"}
       on:click={() => (activeTab = "layers")}
       title="Layers"
+      data-testid="layers-tab-btn"
     >
       <div class="icon-w"><LayersIcon /></div>
       <span>Layers</span>
@@ -102,6 +103,7 @@
       class:active={activeTab === "style"}
       on:click={() => (activeTab = "style")}
       title="Cursor Style"
+      data-testid="style-tab-btn"
     >
       <div class="icon-w"><CursorIcon /></div>
       <span>Style</span>
@@ -111,6 +113,7 @@
       class:active={activeTab === "cinema"}
       on:click={() => (activeTab = "cinema")}
       title="Cinematic Effects"
+      data-testid="cinema-tab-btn"
     >
       <div class="icon-w"><CinemaIcon /></div>
       <span>Cinema</span>
@@ -120,6 +123,7 @@
       class:active={activeTab === "audio"}
       on:click={() => (activeTab = "audio")}
       title="Transcription"
+      data-testid="audio-tab-btn"
     >
       <div class="icon-w"><MicIcon /></div>
       <span>Audio</span>
@@ -129,6 +133,7 @@
       class:active={activeTab === "export"}
       on:click={() => (activeTab = "export")}
       title="Export Settings"
+      data-testid="export-tab-btn"
     >
       <div class="icon-w"><ExportIcon /></div>
       <span>Export</span>
@@ -137,7 +142,7 @@
 
   <div class="tab-content">
     {#if activeTab === "layers"}
-      <div class="section">
+      <div class="section" data-testid="layers-tab">
         <h2 class="section-title">Visible Tracks</h2>
         <div class="toggle-group">
           <label class="cb"
@@ -160,6 +165,7 @@
               class="cb-input"
               bind:checked={$reviewSessionStore.includeWebcamTrack}
               disabled={!hasWebcam}
+              data-testid="webcam-toggle"
             />
             <span>Include webcam</span>
           </label>
@@ -169,13 +175,14 @@
               class="cb-input"
               bind:checked={$reviewSessionStore.includeAudioTrack}
               disabled={!hasAudio}
+              data-testid="audio-toggle"
             />
             <span>Include audio</span>
           </label>
         </div>
       </div>
     {:else if activeTab === "style"}
-      <div class="tab-pane-fade">
+      <div class="tab-pane-fade" data-testid="cursor-style-tab">
         <PointerStyleControls
           {pointerIconOptions}
           {removablePointerIconIds}
@@ -185,13 +192,15 @@
         />
       </div>
     {:else if activeTab === "cinema"}
-      <div class="tab-pane-fade">
+      <div class="tab-pane-fade" data-testid="cinema-tab">
         <CinematicEffectsSection />
       </div>
     {:else if activeTab === "audio"}
-      <TranscriptionSidebarSection {hasAudio} {audioFilePath} />
+      <div data-testid="audio-tab">
+        <TranscriptionSidebarSection {hasAudio} {audioFilePath} />
+      </div>
     {:else if activeTab === "export"}
-      <div class="tab-pane-fade section">
+      <div class="tab-pane-fade section" data-testid="export-tab">
         <h2 class="section-title">Format & Resolution</h2>
         <div class="format-field">
           <label class="field-label" for="render-format-select"
@@ -202,9 +211,10 @@
               id="render-format-select"
               value={$reviewSessionStore.renderFormat}
               on:change={onRenderFormatSelect}
+              data-testid="format-select"
             >
               {#each renderFormatOptions as option}
-                <option value={option.value} disabled={!option.supported}>
+                <option value={option.value} disabled={!option.supported} data-testid="format-option">
                   {option.label}
                   {#if !option.supported}
                     {" (unsupported)"}
@@ -225,9 +235,10 @@
                 id="resolution-preset-select"
                 value={$reviewSessionStore.selectedResolutionPreset}
                 on:change={onResolutionPresetSelect}
+                data-testid="resolution-preset"
               >
                 {#each resolutionPresets as preset}
-                  <option value={preset.id}>{preset.label}</option>
+                  <option value={preset.id} data-testid="preset-option">{preset.label}</option>
                 {/each}
               </select>
             </div>
@@ -273,9 +284,10 @@
         on:click={onRender}
         disabled={isRenderingVideo}
         class:is-rendering={isRenderingVideo}
+        data-testid="render-btn"
       >
         {#if isRenderingVideo}
-          <div class="render-progress-overlay" style={`width: ${renderProgress}%`} />
+          <div class="render-progress-overlay" style={`width: ${renderProgress}%`} data-testid="render-progress" />
           <div class="render-btn-content">
             <div class="loading-spinner-tiny" />
             <span class="render-btn-text">Exporting... {renderProgress}%</span>

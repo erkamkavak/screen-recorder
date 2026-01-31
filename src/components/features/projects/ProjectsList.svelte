@@ -95,7 +95,7 @@
   });
 </script>
 
-<div class="projects-list">
+<div class="projects-list" data-testid="projects-list">
   <div class="projects-header">
     <h2>Saved Projects</h2>
     <div class="header-actions">
@@ -127,9 +127,9 @@
     <p class="empty">No saved projects yet. Record something and save it!</p>
   {:else}
     <ul class="projects">
-      {#each projects as project (project.id)}
-        <li class="project-item">
-          <button class="project-card" on:click={() => openProject(project)}>
+      {#each projects as project, index (project.id)}
+        <li class="project-item" data-testid={`project-item-${index + 1}`}>
+          <button class="project-card" on:click={() => openProject(project)} data-testid="project-item">
             <div class="project-info">
               <span class="project-name">{project.name}</span>
               <span class="project-meta">

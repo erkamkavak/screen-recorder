@@ -406,6 +406,7 @@
         class="absolute bottom-full left-1/2 z-40 -translate-x-1/2 mb-3"
         use:clickOutside
         on:outclick={cancelSelection}
+        data-testid="source-selector"
       >
         <div
           class="w-[28rem] max-h-96 flex flex-col gap-4 p-5 bg-white dark:bg-fmd-navy/95 rounded-2xl shadow-2xl border border-gray-200/80 dark:border-fmd-blue/60"
@@ -449,6 +450,7 @@
                 <button
                   class="flex flex-col items-center gap-3 p-4 rounded-xl border border-transparent hover:border-fmd-red transition bg-white/90 dark:bg-fmd-navy/70 hover:bg-fmd-red/5 dark:hover:bg-fmd-blue/20"
                   on:click={() => selectSource(source)}
+                  data-testid="source-item"
                 >
                   {#if source.thumbnail}
                     <img src={source.thumbnail} alt={source.name} class="w-32 h-20 object-cover rounded-lg shadow-md" />

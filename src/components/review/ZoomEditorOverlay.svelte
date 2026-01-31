@@ -7,6 +7,7 @@
 <div
   class="zoom-editor-overlay"
   transition:fade={{ duration: 200 }}
+  data-testid="zoom-editor"
 >
   <div class="editor-info">
     <div class="editor-dot-w">

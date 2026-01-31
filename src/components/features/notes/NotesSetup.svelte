@@ -62,7 +62,7 @@
 </script>
 
 {#if !$isRecording}
-  <div class="flex flex-col gap-4">
+  <div class="flex flex-col gap-4" data-testid="notes-panel">
     <div class="relative">
       <textarea
         bind:value={newNoteText}
@@ -70,12 +70,14 @@
         placeholder="Type a note... (Ctrl+Enter to add)"
         rows="3"
         class="w-full rounded-xl border-0 bg-slate-100/80 px-4 py-3 text-sm text-slate-700 placeholder-slate-400 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/30 dark:bg-slate-800/80 dark:text-slate-200 dark:placeholder-slate-500"
+        data-testid="note-input"
       ></textarea>
       <button
         type="button"
         on:click={handleAddNote}
         disabled={!newNoteText.trim()}
         class="absolute right-2 bottom-2 rounded-lg bg-indigo-500 px-3 py-1.5 text-xs font-medium text-white transition-all hover:bg-indigo-600 disabled:opacity-40 disabled:hover:bg-indigo-500"
+        data-testid="add-note-btn"
       >
         Add
       </button>
@@ -99,6 +101,7 @@
         {#each $notes as note, index (note.id)}
           <li
             class="group flex items-center gap-3 rounded-lg bg-slate-50/80 px-3 py-2.5 transition-colors hover:bg-slate-100/80 dark:bg-slate-800/50 dark:hover:bg-slate-800/80"
+            data-testid={`note-${index + 1}`}
           >
             <span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-md bg-indigo-500/10 text-[11px] font-semibold text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400">
               {index + 1}

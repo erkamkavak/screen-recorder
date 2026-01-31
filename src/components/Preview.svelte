@@ -99,41 +99,43 @@
   }
 </script>
 
-<PreviewStage
-  canvasWidth={$canvasDimensions.width}
-  canvasHeight={$canvasDimensions.height}
-  on:dimensions={(event) => {
-    stageWidth = event.detail.width;
-    stageHeight = event.detail.height;
-    stageScale = event.detail.scale;
-  }}
->
-  <PreviewCanvas
+<div data-testid="recorder-view" style="width: 100%; height: 100%;">
+  <PreviewStage
     canvasWidth={$canvasDimensions.width}
     canvasHeight={$canvasDimensions.height}
-    recordingFPS={$recordingFPS}
-    {drawState}
-    scale={stageScale}
-    bind:this={previewCanvasRef}
-  />
+    on:dimensions={(event) => {
+      stageWidth = event.detail.width;
+      stageHeight = event.detail.height;
+      stageScale = event.detail.scale;
+    }}
+  >
+    <PreviewCanvas
+      canvasWidth={$canvasDimensions.width}
+      canvasHeight={$canvasDimensions.height}
+      recordingFPS={$recordingFPS}
+      {drawState}
+      scale={stageScale}
+      bind:this={previewCanvasRef}
+    />
 
-  <ScreenAlignmentOverlay
-    activeShare={$activeShare}
-    screenLayoutState={screenLayoutState}
-    canvasWidth={$canvasDimensions.width}
-    canvasHeight={$canvasDimensions.height}
-    screenFocused={$screenFocusedStore}
-    onFocus={inputCapture.handleScreenFocus}
-    onMouseOver={inputCapture.handleScreenMouseOver}
-    onMouseLeave={inputCapture.handleScreenMouseLeave}
-    attachOverlay={inputCapture.attachScreenOverlay}
-    onPointerEvent={inputCapture.handleLocalPointerEvent}
-  />
+    <ScreenAlignmentOverlay
+      activeShare={$activeShare}
+      screenLayoutState={screenLayoutState}
+      canvasWidth={$canvasDimensions.width}
+      canvasHeight={$canvasDimensions.height}
+      screenFocused={$screenFocusedStore}
+      onFocus={inputCapture.handleScreenFocus}
+      onMouseOver={inputCapture.handleScreenMouseOver}
+      onMouseLeave={inputCapture.handleScreenMouseLeave}
+      attachOverlay={inputCapture.attachScreenOverlay}
+      onPointerEvent={inputCapture.handleLocalPointerEvent}
+    />
 
-  <WebcamOverlay
-    webcamLayoutState={webcamLayoutState}
-    webcamState={$webcamState}
-    containerWidth={stageWidth}
-    containerHeight={stageHeight}
-  />
-</PreviewStage>
+    <WebcamOverlay
+      webcamLayoutState={webcamLayoutState}
+      webcamState={$webcamState}
+      containerWidth={stageWidth}
+      containerHeight={stageHeight}
+    />
+  </PreviewStage>
+</div>

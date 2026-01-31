@@ -44,7 +44,7 @@
   $: config = $reviewSessionStore.cinematicEffects;
 </script>
 
-<div class="effects-container">
+<div class="effects-container" data-testid="cinema-tab">
   <!-- Motion Physics Group -->
   <div class="effect-group">
     <div class="group-header">
@@ -65,7 +65,7 @@
             <p>Adds momentum and weight to cursor movement for a professional look.</p>
           </div>
           <div class="toggle-wrapper">
-            <input type="checkbox" checked={config.glideEnabled} on:change={onGlideToggle} id="glide-toggle" />
+            <input type="checkbox" checked={config.glideEnabled} on:change={onGlideToggle} id="glide-toggle" data-testid="glide-toggle" />
             <label for="glide-toggle" class="toggle-switch"></label>
           </div>
         </div>
@@ -165,7 +165,7 @@
           <p>Adds realistic camera blur based on movement speed.</p>
         </div>
         <div class="blur-control">
-          <input type="range" min="0" max="1" step="0.1" value={config.motionBlurStrength} on:input={onMotionBlurChange} />
+          <input type="range" min="0" max="1" step="0.1" value={config.motionBlurStrength} on:input={onMotionBlurChange} data-testid="motion-blur-slider" />
           <span class="percent-label">{Math.round(config.motionBlurStrength * 100)}%</span>
         </div>
       </div>

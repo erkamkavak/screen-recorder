@@ -65,42 +65,46 @@
   };
 </script>
 
-<ActionButton
-  isActive={Boolean($micState.stream)}
-  {isPopupOpen}
-  on:popupDismiss={() => (isPopupOpen = false)}
-  on:click={handleActionButtonClick}
->
-  <!-- Popup content -->
-  <PopupContainer slot="popupContent" title="Select a mic">
-    {#await audioDevices}
-      <div class="flex justify-center p-3">
-        <Loader>Fetching mics...</Loader>
-      </div>
-    {:then devices}
-      <div class="flex flex-col gap-1">
-        {#each devices as device (device.deviceId)}
-          <TextButton
-            on:click={() => onPromptDevice(device.deviceId)}
-            hasCheck={$micState.deviceId === device.deviceId}
-          >
-            {device.label}
-            {#if device.deviceId === "default"}<span>(Default)</span>{/if}
-          </TextButton>
-        {/each}
-
-        {#if $micState.stream}
-          <div transition:slide={{ duration: 150 }} class="w-full block">
+<div data-testid="audio-controls">
+  <ActionButton
+    isActive={Boolean($micState.stream)}
+    {isPopupOpen}
+    on:popupDismiss={() => (isPopupOpen = false)}
+    on:click={handleActionButtonClick}
+    data-testid="mic-toggle"
+  >
+    <!-- Popup content -->
+    <PopupContainer slot="popupContent" title="Select a mic">
+      {#await audioDevices}
+        <div class="flex justify-center p-3">
+          <Loader>Fetching mics...</Loader>
+        </div>
+      {:then devices}
+        <div class="flex flex-col gap-1">
+          {#each devices as device (device.deviceId)}
             <TextButton
-              on:click={stopMic}
-              extraClasses="bg-fmd-white dark:bg-fmd-navy/30 dark:hover:bg-fmd-blue w-full"
-              hasClose>Stop Mic</TextButton
+              on:click={() => onPromptDevice(device.deviceId)}
+              hasCheck={$micState.deviceId === device.deviceId}
+              data-testid="mic-option"
             >
-          </div>
-        {/if}
-      </div>
-    {/await}
-  </PopupContainer>
+              {device.label}
+              {#if device.deviceId === "default"}<span>(Default)</span>{/if}
+            </TextButton>
+          {/each}
 
-  <Mic />
-</ActionButton>
+          {#if $micState.stream}
+            <div transition:slide={{ duration: 150 }} class="w-full block">
+              <TextButton
+                on:click={stopMic}
+                extraClasses="bg-fmd-white dark:bg-fmd-navy/30 dark:hover:bg-fmd-blue w-full"
+                hasClose>Stop Mic</TextButton
+              >
+            </div>
+          {/if}
+        </div>
+      {/await}
+    </PopupContainer>
+
+    <Mic />
+  </ActionButton>
+</div>

@@ -87,7 +87,7 @@
   };
 </script>
 
-<div class="flex items-center gap-6 px-8 py-5 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm dark:bg-slate-900 dark:border-slate-800">
+<div class="flex items-center gap-6 px-8 py-5 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm dark:bg-slate-900 dark:border-slate-800" data-testid="floating-bar">
   <!-- Audio & Camera Group -->
   <div class="flex items-center gap-4">
     <div class="flex flex-col items-center gap-1.5">
@@ -176,6 +176,7 @@
         disabled={isTakingScreenshot}
         title="Take Screenshot"
         aria-label="Export screenshot"
+        data-testid="screenshot-btn"
       >
         {#if isTakingScreenshot}
           <svg class="animate-spin h-5 w-5 text-slate-500 dark:text-slate-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -201,6 +202,7 @@
           dispatch("record");
         }}
         aria-label={$isRecording ? "Stop recording" : "Start recording"}
+        data-testid="recorder-toggle"
       >
         <div
           class="transition-all duration-200 { $isRecording

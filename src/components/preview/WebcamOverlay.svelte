@@ -148,6 +148,7 @@
   <div
     class="absolute"
     style={`top: ${currentMetrics.top}px; left: ${currentMetrics.left}px; width: ${currentMetrics.width}px; height: ${currentMetrics.height}px;`}
+    data-testid="webcam-preview"
   >
     <div
       class="relative h-full w-full cursor-grab active:cursor-grabbing"
