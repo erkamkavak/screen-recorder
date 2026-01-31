@@ -56,6 +56,7 @@ export const saveProject = async (isSaving: (v: boolean) => void, onSaved: () =>
             captionColor: session.captionColor,
             transcriptionVersions: session.transcriptionVersions,
             activeTranscriptionId: session.activeTranscriptionId,
+            cinematicEffects: session.cinematicEffects,
         });
 
         const recordingWithSegments = { ...recording, segments, reviewState };
@@ -117,6 +118,7 @@ export const continueRecording = () => {
         captionColor: session.captionColor,
         transcriptionVersions: session.transcriptionVersions,
         activeTranscriptionId: session.activeTranscriptionId,
+        cinematicEffects: session.cinematicEffects,
     });
 
     currentProject.set({
@@ -190,7 +192,8 @@ export const downloadEditedVideo = async (
                     captionColor: session.captionColor,
                     includeAudio: session.includeAudioTrack,
                 },
-                captions: get(transcriptionResult)?.segments ?? undefined,
+                captions: get(transcriptionResult)?.result?.segments ?? undefined,
+                sourceAudioPath: get(transcriptionResult)?.sourceAudioPath,
                 pointerRecords,
                 pointerIconUrl: options?.pointerIconUrl ?? null,
                 pointerIconPressedUrl: options?.pointerIconPressedUrl ?? null,
@@ -199,6 +202,7 @@ export const downloadEditedVideo = async (
                 onProgress: (current, total) => {
                     setProgress(Math.round((current / total) * 100));
                 },
+                cinematicEffects: session.cinematicEffects,
             },
             recording.segments
         );

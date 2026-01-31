@@ -32,6 +32,7 @@ import {
     type SegmentSource,
 } from "./segmentRenderer";
 import { processAudioSegments, type AudioProcessingSegment } from "./audioProcessor";
+import { createInitialCinematicState } from "./cinematicEffects";
 
 import cursorPackCursor from "../../assets/cursors/cutecore-pink-cursor.png?url";
 import cursorPackPointer from "../../assets/cursors/cutecore-pink-pointer.png?url";
@@ -207,6 +208,8 @@ export const render = async (
         zoomEvents,
         captions: options.captions,
         toggles: options.toggles,
+        cinematicEffects: options.cinematicEffects,
+        cinematicState: options.cinematicEffects ? createInitialCinematicState() : undefined,
     };
 
     // Calculate timing
@@ -550,6 +553,8 @@ const renderMultiSegment = async (
         pointerSize: options.pointerSize ?? 18,
         captions: options.captions,
         toggles: options.toggles,
+        cinematicEffects: options.cinematicEffects,
+        cinematicState: options.cinematicEffects ? createInitialCinematicState() : undefined,
     };
 
     // Calculate timing based on total effective segments duration
@@ -704,11 +709,14 @@ const renderMultiSegment = async (
             );
             const segClickRecords = segPointerRecords.filter((event) => event.kind === "click");
 
+            const showSegCaptions = !options.sourceAudioPath || timeInfo.segment.assets.audio?.filePath === options.sourceAudioPath;
+
             const frameConfigWithFrames = {
                 ...(frameRenderConfig as any),
                 zoomEvents,
                 pointerRecords: segPointerRecords,
                 clickRecords: segClickRecords,
+                captions: showSegCaptions ? options.captions : undefined,
                 screenFrame: screenBitmap,
                 webcamFrame: webcamBitmap ?? undefined,
             };

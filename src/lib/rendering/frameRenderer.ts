@@ -11,9 +11,12 @@ import type { CaptionSegment } from "./types";
 import { calculateScreenPlacement, drawScreenShare, drawWebcam } from "../canvas/layoutDrawers";
 import { drawCaptionsOverlay } from "../canvas/captions";
 import { drawClickRipplesOverlay, drawPointerCursorOverlay } from "../canvas/pointerOverlays";
-import { computeZoomState } from "../timeline/timelinePlayback";
-import { computeZoomFocusSimple, getCanvasNormalizedCursor } from "../zoom/zoomFollowState";
+import { computeZoomState, computeZoomScale } from "../timeline/timelinePlayback";
+import { computeZoomFocusSimple, getCanvasNormalizedCursor, calculateFocusWithDeadZone } from "../zoom/zoomFollowState";
 import { computePointerState } from "../pointer/pointerState";
+
+import type { CinematicEffectsConfig, CinematicState } from "./cinematicEffects";
+import { ANIMATION_STYLES, getAdaptiveSmoothTime, smoothDamp, applyCursorMotionBlur } from "./cinematicEffects";
 
 /**
  * Configuration for frame rendering
@@ -45,6 +48,8 @@ export interface FrameRenderConfig {
         captionFontSize: number;
         captionColor: string;
     };
+    cinematicEffects?: CinematicEffectsConfig;
+    cinematicState?: CinematicState;
 }
 
 /**
@@ -89,22 +94,91 @@ export const renderFrameContent = (
         config.generalLayoutState
     );
 
-    // Get pointer state and normalize it to the canvas
+    // Get pointer state
     const pointerState = computePointerState(currentTime, pointerRecords);
-    const canvasCursor = getCanvasNormalizedCursor(pointerState, placement, canvas);
     
+    // Apply cinematic effects if state is provided
+    let cursorX = pointerState.x;
+    let cursorY = pointerState.y;
+    let cursorVisible = pointerState.visible;
+
+    if (config.cinematicState && config.cinematicEffects) {
+        const { cinematicState, cinematicEffects } = config;
+        const deltaTime = config.cinematicState.lastUpdateSec > 0 
+            ? Math.min(currentTime - cinematicState.lastUpdateSec, 0.1) 
+            : 1/30;
+
+        const style = ANIMATION_STYLES[cinematicEffects.animationStyle];
+        
+        // Glide Effect (SmoothDamp)
+        if (cinematicEffects.glideEnabled) {
+            const smoothTime = getAdaptiveSmoothTime(cinematicState.cursorVelocity, style);
+            
+            cursorX = smoothDamp(cinematicState.cursorPos.x, pointerState.x, cinematicState.cursorVelocity.x, smoothTime, deltaTime);
+            cursorY = smoothDamp(cinematicState.cursorPos.y, pointerState.y, cinematicState.cursorVelocity.y, smoothTime, deltaTime);
+            
+            cinematicState.cursorPos = { x: cursorX, y: cursorY };
+        } else {
+            cinematicState.cursorPos = { x: pointerState.x, y: pointerState.y };
+            cinematicState.cursorVelocity.x.value = 0;
+            cinematicState.cursorVelocity.y.value = 0;
+            cursorX = pointerState.x;
+            cursorY = pointerState.y;
+        }
+
+        // Static Cursor Hiding
+        const moveDistSq = (pointerState.x - cinematicState.cursorPos.x) ** 2 + (pointerState.y - cinematicState.cursorPos.y) ** 2;
+        if (moveDistSq > 0.00001) {
+            cinematicState.lastMovementTime = currentTime;
+        }
+
+        if (cinematicEffects.hideWhenStatic && cursorVisible) {
+            const timeSinceLastMovement = currentTime - cinematicState.lastMovementTime;
+            if (timeSinceLastMovement > 1.0) { // 1 second threshold
+                cursorVisible = false;
+            }
+        }
+
+        cinematicState.lastUpdateSec = currentTime;
+    }
+
+    // Now convert the (smoothed) screen cursor to canvas-normalized for zoom logic
+    const canvasCursor = getCanvasNormalizedCursor({ x: cursorX, y: cursorY, visible: cursorVisible }, placement, canvas);
+
     // Calculate zoom state from timeline events
     const zoomState = computeZoomState(config.zoomEvents, currentTime);
+
+    // Reactive zoom scale override: ensure global "Zoom Level" affects existing zooms
+    if (zoomState.zoom && config.cinematicEffects?.zoomScale) {
+        const originalZoom = zoomState.zoom.zoom;
+        zoomState.zoom.zoom = config.cinematicEffects.zoomScale;
+        zoomState.scale = computeZoomScale(zoomState.zoom, currentTime);
+        zoomState.zoom.zoom = originalZoom;
+    }
     
     // Determine the effective focus point for zoom using shared logic
-    const { focusX: zoomFocusX, focusY: zoomFocusY, scale } = computeZoomFocusSimple(
-        zoomState.scale,
-        zoomState.focusX,
-        zoomState.focusY,
-        canvasCursor?.x ?? null,
-        canvasCursor?.y ?? null,
-        zoomState.followCursor ?? false
-    );
+    let targetFocusX = zoomState.focusX;
+    let targetFocusY = zoomState.focusY;
+
+    if (zoomState.scale > 1 && zoomState.followCursor && canvasCursor) {
+        const deadZone = config.cinematicEffects?.deadZone ?? 0.1;
+        targetFocusX = calculateFocusWithDeadZone(canvasCursor.x, config.cinematicState?.zoomFocus.x ?? zoomState.focusX, zoomState.scale, deadZone);
+        targetFocusY = calculateFocusWithDeadZone(canvasCursor.y, config.cinematicState?.zoomFocus.y ?? zoomState.focusY, zoomState.scale, deadZone);
+    }
+
+    let { focusX: zoomFocusX, focusY: zoomFocusY, scale } = { focusX: targetFocusX, focusY: targetFocusY, scale: zoomState.scale };
+
+    // Smooth Zoom Transition
+    if (config.cinematicState && config.cinematicEffects?.smoothZoomEnabled) {
+        const { cinematicState, cinematicEffects } = config;
+        const deltaTime = 1/30; // Use constant or derived delta
+        const style = ANIMATION_STYLES[cinematicEffects.animationStyle];
+
+        zoomFocusX = smoothDamp(cinematicState.zoomFocus.x, zoomFocusX, cinematicState.zoomVelocity.x, style.smoothTime * 0.8, deltaTime);
+        zoomFocusY = smoothDamp(cinematicState.zoomFocus.y, zoomFocusY, cinematicState.zoomVelocity.y, style.smoothTime * 0.8, deltaTime);
+
+        cinematicState.zoomFocus = { x: zoomFocusX, y: zoomFocusY };
+    }
 
     // Clear and draw background first
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -141,17 +215,28 @@ export const renderFrameContent = (
     }
 
     // Draw pointer/cursor
-    if (toggles.showScreen) {
+    if (toggles.showScreen && cursorVisible) {
         if (toggles.showMouse && pointerRecords.length && placement) {
+            ctx.save();
+            // Apply motion blur if enabled
+            if (config.cinematicEffects?.motionBlurStrength && config.cinematicState) {
+                applyCursorMotionBlur(
+                    ctx, 
+                    config.cinematicState.cursorVelocity, 
+                    config.cinematicEffects.motionBlurStrength
+                );
+            }
+
             drawPointerCursorOverlay({
                 ctx,
                 placement,
                 canvasSize: config.canvasSize,
                 pointerSize: config.pointerSize,
-                pointerState,
+                pointerState: { ...pointerState, x: cursorX, y: cursorY },
                 iconDefault: config.pointerIconImage,
                 iconPressed: config.pointerPressedIconImage,
             });
+            ctx.restore();
         }
     }
 

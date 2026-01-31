@@ -6,6 +6,7 @@ import type { CanvasSize, DrawFn, Background } from "../stores";
 import type { GeneralLayoutState, ScreenState, WebcamLayoutState, Theme, Share } from "../stores";
 import type { PointerEventRecord, RecordingAsset, RecordingAssets, RecordingSegment } from "../stores";
 import type { TimelineSnapshot, TimelineZoomEvent } from "../stores/timeline";
+import type { CinematicEffectsConfig } from "./cinematicEffects";
 
 /**
  * Toggle configuration for what elements to include in the render
@@ -63,6 +64,12 @@ export interface RenderOptions {
 
     /** Captions to render on top of the canvas (not affected by zoom) */
     captions?: CaptionSegment[];
+
+    /** Cinematic effects configuration */
+    cinematicEffects?: CinematicEffectsConfig;
+
+    /** Original source audio path that the captions belong to */
+    sourceAudioPath?: string;
 }
 
 /**

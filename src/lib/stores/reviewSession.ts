@@ -28,6 +28,7 @@ export interface ReviewSessionState {
         running: boolean;
         error: string | null;
     };
+    cinematicEffects: import("../rendering/cinematicEffects").CinematicEffectsConfig;
 }
 
 const DEFAULT_STATE: ReviewSessionState = {
@@ -46,6 +47,16 @@ const DEFAULT_STATE: ReviewSessionState = {
     transcriptionVersions: [],
     activeTranscriptionId: null,
     transcriptionJob: { jobId: null, status: null, running: false, error: null },
+    cinematicEffects: {
+        glideEnabled: true,
+        animationStyle: "mellow",
+        motionBlurStrength: 0.5,
+        hideWhenStatic: false,
+        smoothZoomEnabled: true,
+        deadZone: 0.1,
+        zoomScale: 2.0,
+        easing: "easeInOut",
+    },
 };
 
 function createReviewSessionStore() {
@@ -74,6 +85,10 @@ function createReviewSessionStore() {
             ...s, 
             transcriptionJob: { ...s.transcriptionJob, ...v } 
         })),
+        setCinematicEffects: (v: Partial<ReviewSessionState["cinematicEffects"]>) => update(s => ({
+            ...s,
+            cinematicEffects: { ...s.cinematicEffects, ...v }
+        })),
     };
 }
 
@@ -91,7 +106,8 @@ export const transcriptionResult = derived(
     reviewSessionStore,
     ($session) => {
         const { transcriptionVersions, activeTranscriptionId } = $session;
-        if (!activeTranscriptionId) return transcriptionVersions.length > 0 ? transcriptionVersions[transcriptionVersions.length - 1].result : null;
-        return transcriptionVersions.find(v => v.id === activeTranscriptionId)?.result ?? null;
+        if (transcriptionVersions.length === 0) return null;
+        if (!activeTranscriptionId) return transcriptionVersions[transcriptionVersions.length - 1];
+        return transcriptionVersions.find(v => v.id === activeTranscriptionId) ?? transcriptionVersions[transcriptionVersions.length - 1];
     }
 );

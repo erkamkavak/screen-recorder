@@ -1,7 +1,9 @@
 <script lang="ts">
   import PointerStyleControls from "./PointerStyleControls.svelte";
   import TranscriptionSidebarSection from "./TranscriptionSidebarSection.svelte";
+  import CinematicEffectsSection from "./CinematicEffectsSection.svelte";
   import LayersIcon from "../icons/layers.icon.svelte";
+  import CinemaIcon from "../icons/cinema.icon.svelte";
   import CursorIcon from "../icons/cursor.icon.svelte";
   import MicIcon from "../icons/mic.icon.svelte";
   import ExportIcon from "../icons/export.icon.svelte";
@@ -71,7 +73,7 @@
     reviewSessionStore.setSelectedFrameRatePreset(val as any);
   };
 
-  type SidebarTab = "layers" | "style" | "audio" | "export";
+  type SidebarTab = "layers" | "cinema" | "style" | "audio" | "export";
   let activeTab: SidebarTab = "layers";
 
   let showBackConfirmation = false;
@@ -103,6 +105,15 @@
     >
       <div class="icon-w"><CursorIcon /></div>
       <span>Style</span>
+    </button>
+    <button
+      class="tab-btn"
+      class:active={activeTab === "cinema"}
+      on:click={() => (activeTab = "cinema")}
+      title="Cinematic Effects"
+    >
+      <div class="icon-w"><CinemaIcon /></div>
+      <span>Cinema</span>
     </button>
     <button
       class="tab-btn"
@@ -172,6 +183,10 @@
           {onZipPointerFileChange}
           {onRemovePointerIconOption}
         />
+      </div>
+    {:else if activeTab === "cinema"}
+      <div class="tab-pane-fade">
+        <CinematicEffectsSection />
       </div>
     {:else if activeTab === "audio"}
       <TranscriptionSidebarSection {hasAudio} {audioFilePath} />

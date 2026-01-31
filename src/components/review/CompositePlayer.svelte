@@ -1,19 +1,10 @@
 <script lang="ts">
   import { onDestroy, onMount } from "svelte";
   import type { TimelineSnapshot } from "../../lib/stores/timeline";
-  import { computeZoomState } from "../../lib/timeline/timelinePlayback";
-  import { computeZoomFocusSimple, getCanvasNormalizedCursor } from "../../lib/zoom/zoomFollowState";
-  import { drawScreenShare, drawWebcam } from "../../lib/canvas/layoutDrawers";
   import {
-    computePointerState,
-    type ComputedPointerState,
-  } from "../../lib/pointer/pointerState";
-  import { calculateScreenPlacement } from "../../lib/canvas/layoutDrawers";
-  import { drawCaptionsOverlay } from "../../lib/canvas/captions";
-  import {
-    drawClickRipplesOverlay,
-    drawPointerCursorOverlay,
-  } from "../../lib/canvas/pointerOverlays";
+    renderFrameContent,
+    type FrameRenderConfig,
+  } from "../../lib/rendering/frameRenderer";
   import {
     createAudioElement,
     createVideoElement,
@@ -26,6 +17,10 @@
     getTotalSegmentsDuration,
   } from "../../lib/rendering/segmentRenderer";
   import { getPointerRecords } from "../../lib/pointer/pointerState";
+import { 
+  createInitialCinematicState, 
+  type CinematicState
+} from "../../lib/rendering/cinematicEffects";
   import type {
     Background,
     CanvasSize,
@@ -43,6 +38,7 @@
   import {
     reviewSessionStore,
     pointerRecords,
+    transcriptionResult,
   } from "../../lib/stores/reviewSession";
 
   export let assets: RecordingAssets;
@@ -55,9 +51,6 @@
   export let snapshot: TimelineSnapshot;
   export let segments: RecordingSegment[] = [];
 
-  export let transcript: {
-    segments: { startMs: number; endMs: number; text: string }[];
-  } | null = null;
 
   export let pointerIconUrl: string | null = null;
   export let pointerIconPressedUrl: string | null = null;
@@ -101,11 +94,12 @@
   let activeSegment: RecordingSegment | null = null;
   let activeSegmentOriginalStartSec = 0;
   let activeSegmentId: string | null = null;
-
   let screenShare: Share | null = null;
-  let drawArgs: DrawArgs | null = null;
+
   let animationId: number;
   let playing = false;
+  let cinematicState: CinematicState = createInitialCinematicState();
+  let lastUpdateTime = 0;
 
   const hasSegments = () => (segments?.length ?? 0) >= 1;
 
@@ -168,21 +162,6 @@
     };
     screenWidth = screenVideo.videoWidth;
     screenHeight = screenVideo.videoHeight;
-    // also update drawArgs active share to reflect new segment and dimensions
-    // (activateSegment can run before drawArgs is initialized)
-    if (drawArgs) {
-      drawArgs = {
-        ...drawArgs,
-        activeShare: screenShare,
-        webcamState: {
-          ...drawArgs.webcamState,
-          preview: webcamVideo,
-          width: webcamVideo?.videoWidth ?? 0,
-          height: webcamVideo?.videoHeight ?? 0,
-        },
-      };
-    }
-
     const clampedLocal = Math.max(
       0,
       Math.min(screenVideo.duration || localTimeSec, localTimeSec)
@@ -403,24 +382,6 @@
     screenWidth = screenVideo.videoWidth;
     screenHeight = screenVideo.videoHeight;
 
-    drawArgs = {
-      ctx,
-      theme,
-      canvasSize,
-      activeShare: screenShare,
-      webcamState: {
-        // Provide a dummy stream when we have a webcam video so layoutDrawers.drawWebcam runs
-        stream: webcamVideo ? new MediaStream() : null,
-        preview: webcamVideo,
-        width: webcamVideo?.videoWidth ?? 0,
-        height: webcamVideo?.videoHeight ?? 0,
-      },
-      micAnalyzer: null,
-      generalLayoutState,
-      webcamLayoutState,
-      screenLayoutState,
-    };
-
     // Handle NaN duration (can happen if metadata didn't load properly)
     if (!hasSegments() && screenVideo) {
       const videoDuration = screenVideo.duration;
@@ -452,126 +413,60 @@
     }
   };
 
-  const applyZoom = (scale: number, focusX: number, focusY: number) => {
-    if (!ctx || !canvasEl) return;
-    const centerX = canvasEl.width / 2;
-    const centerY = canvasEl.height / 2;
-    ctx.translate(centerX, centerY);
-    ctx.scale(scale, scale);
-    ctx.translate(-focusX * canvasEl.width, -focusY * canvasEl.height);
-  };
-
-  const getPlacement = () => {
-    if (!drawArgs) return null;
-    return calculateScreenPlacement(
-      canvasSize,
-      drawArgs.activeShare,
-      screenLayoutState,
-      generalLayoutState
-    );
-  };
-
   const drawFrame = () => {
-    if (!ctx || !screenVideo || !drawArgs) return;
+    if (!ctx || !screenVideo || !screenShare) return;
     const localOriginalTimeSec = screenVideo.currentTime || 0;
+    const zoomEvalTimeSec = localOriginalTimeSec;
+
     const segmentZoomEvents = activeSegmentId
       ? snapshot.segmentEvents?.[activeSegmentId] ?? []
       : [];
-    const zoomEvalTimeSec = hasSegments()
-      ? localOriginalTimeSec
-      : screenVideo.currentTime || 0;
 
     const segmentPointerRecords =
       hasSegments() && activeSegment
         ? getPointerRecords(activeSegment.events)
         : $pointerRecords;
+        
     const segmentClickRecords = segmentPointerRecords.filter(
       (event) => event.kind === "click"
     );
 
-    ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-    ctx.imageSmoothingQuality = "high";
-    ctx.globalCompositeOperation = "source-over";
+    const config: FrameRenderConfig = {
+      ctx,
+      canvas: canvasEl,
+      canvasSize,
+      theme,
+      background,
+      generalLayoutState,
+      screenLayoutState,
+      webcamLayoutState,
+      screenShare,
+      webcamVideo,
+      pointerRecords: segmentPointerRecords,
+      clickRecords: segmentClickRecords,
+      pointerIconImage,
+      pointerPressedIconImage,
+      pointerSize: $reviewSessionStore.pointerIndicatorSize,
+      zoomEvents: segmentZoomEvents,
+      captions: ($transcriptionResult && 
+                  activeSegment && 
+                  (!$transcriptionResult.sourceAudioPath || activeSegment.assets.audio?.filePath === $transcriptionResult.sourceAudioPath))
+                 ? $transcriptionResult.result.segments 
+                 : undefined,
+      toggles: {
+        showScreen: true,
+        showWebcam: $reviewSessionStore.includeWebcamTrack,
+        showMouse: $reviewSessionStore.includePointerTrack,
+        showClicks: $reviewSessionStore.includeClickTrack,
+        showCaptions: $reviewSessionStore.showCaptions,
+        captionFontSize: $reviewSessionStore.captionFontSize,
+        captionColor: $reviewSessionStore.captionColor,
+      },
+      cinematicEffects: $reviewSessionStore.cinematicEffects,
+      cinematicState,
+    };
 
-    ctx.save();
-    const zoomState = computeZoomState(
-      segmentZoomEvents,
-      zoomEvalTimeSec
-    );
-    const pointerState = computePointerState(
-      zoomEvalTimeSec,
-      segmentPointerRecords
-    );
-    const placement = getPlacement();
-    const canvasCursor = getCanvasNormalizedCursor(pointerState, placement, canvasEl);
-    
-    // Determine the effective focus point for zoom using shared logic
-    const { focusX: zoomFocusX, focusY: zoomFocusY, scale } = computeZoomFocusSimple(
-        zoomState.scale,
-        zoomState.focusX,
-        zoomState.focusY,
-        canvasCursor?.x ?? null,
-        canvasCursor?.y ?? null,
-        zoomState.followCursor ?? false
-    );
-    
-    applyZoom(scale, zoomFocusX, zoomFocusY);
-    if (true) {
-      // Always show screen if it's there
-      drawScreenShare(drawArgs);
-      const placement = getPlacement();
-      if (ctx && placement && $reviewSessionStore.includeClickTrack) {
-        drawClickRipplesOverlay({
-          ctx,
-          placement,
-          clickRecords: segmentClickRecords,
-          timeSec: zoomEvalTimeSec,
-          canvasSize,
-          pointerSize: $reviewSessionStore.pointerIndicatorSize,
-        });
-      }
-      if (ctx && placement && $reviewSessionStore.includePointerTrack) {
-        drawPointerCursorOverlay({
-          ctx,
-          placement,
-          canvasSize,
-          pointerSize: $reviewSessionStore.pointerIndicatorSize,
-          pointerState,
-          iconDefault: pointerIconImage,
-          iconPressed: pointerPressedIconImage,
-        });
-      }
-    }
-    ctx.restore();
-
-    // Draw webcam without zoom
-    if ($reviewSessionStore.includeWebcamTrack && webcamVideo) {
-      drawWebcam(drawArgs);
-    }
-
-    // Draw captions outside zoom
-    if (true) {
-      if (
-        ctx &&
-        $reviewSessionStore.showCaptions &&
-        transcript?.segments?.length
-      ) {
-        drawCaptionsOverlay({
-          ctx,
-          canvas: canvasEl,
-          canvasSize,
-          timeSec: zoomEvalTimeSec,
-          segments: transcript.segments,
-          fontSize: $reviewSessionStore.captionFontSize,
-          color: $reviewSessionStore.captionColor,
-        });
-      }
-    }
-
-    // Background behind everything
-    ctx.globalCompositeOperation = "destination-over";
-    background.draw(drawArgs);
-    ctx.globalCompositeOperation = "source-over";
+    renderFrameContent(config, zoomEvalTimeSec);
   };
 
   const startLoop = () => {
@@ -594,17 +489,26 @@
       }
       // keep media in sync
       if (webcamVideo) webcamVideo.currentTime = screenVideo.currentTime;
-      if (audioEl) audioEl.currentTime = screenVideo.currentTime;
-      await Promise.all([
-        screenVideo.play(),
-        webcamVideo?.play() ?? Promise.resolve(),
-        $reviewSessionStore.includeAudioTrack && audioEl
-          ? audioEl.play()
-          : Promise.resolve(),
-      ]);
+      if (audioEl) {
+        audioEl.currentTime = screenVideo.currentTime;
+        audioEl.muted = false;
+        audioEl.volume = 1.0;
+      }
+      
+      const playPromises = [
+        screenVideo.play().catch(e => console.warn("screenVideo play failed", e)),
+        webcamVideo?.play()?.catch(e => console.warn("webcamVideo play failed", e)) ?? Promise.resolve()
+      ];
+
+      if ($reviewSessionStore.includeAudioTrack && audioEl) {
+        playPromises.push(audioEl.play().catch(e => console.warn("audioEl play failed", e)));
+      }
+
+      await Promise.all(playPromises);
       startLoop();
       startSyncTimeLoop();
     } catch (e) {
+      console.error("Playback failed", e);
       playing = false;
     }
   };
@@ -635,6 +539,26 @@
 
   $: (async () => {
     await updateAudio();
+    // Also handle segment-based audio reactive loading
+    if (hasSegments() && $reviewSessionStore.includeAudioTrack) {
+        for (const [id, media] of segmentMediaById.entries()) {
+            if (!media.audioEl && media.segment.assets.audio) {
+                const url = await safeLoad(media.segment.assets.audio);
+                if (url) {
+                    const el = createAudioElement(url);
+                    media.audioUrl = url;
+                    media.audioEl = el;
+                    // If this is the active segment, update the local reference
+                    if (id === activeSegmentId) {
+                        audioEl = el;
+                        audioUrl = url;
+                        if (screenVideo) el.currentTime = screenVideo.currentTime;
+                        if (playing) el.play().catch(() => {});
+                    }
+                }
+            }
+        }
+    }
   })();
 
   $: if (!playing && snapshot !== undefined) {

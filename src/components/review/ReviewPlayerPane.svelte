@@ -27,7 +27,6 @@
   export let background: Background;
   export let snapshot: TimelineSnapshot;
 
-  export let transcript: { segments: { startMs: number; endMs: number; text: string }[] } | null = null;
 
   export let pointerIconImageUrl: string | null = null;
   export let pointerIconPressedImageUrl: string | null = null;
@@ -140,7 +139,6 @@
         background={background}
         snapshot={snapshot}
         {segments}
-        {transcript}
         pointerIconUrl={pointerIconImageUrl}
         pointerIconPressedUrl={pointerIconPressedImageUrl}
         bind:duration
