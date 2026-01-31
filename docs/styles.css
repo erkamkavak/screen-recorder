@@ -405,7 +405,7 @@ main.container {
   color: var(--text-primary);
   margin-bottom: 0.5rem;
   line-height: 1.3;
-  height: 1.3em;
+  height: 24px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -420,7 +420,7 @@ main.container {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  height: 3em;
+  height: 42px;
   flex-shrink: 0;
 }
 

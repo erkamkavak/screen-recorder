@@ -1,35 +1,52 @@
-# Clip Flow
- 
-# About this project
-This project is built on top of the open-source repository [clips](https://github.com/FormidableLabs/clips). It preserves the original goals while adding more control over recording, camera, microphone, and post-processing.
+Clip Flow is a high-fidelity screen recording and editing studio. This project is built on top of the open-source repository [clips](https://github.com/FormidableLabs/clips). It preserves the original goals while adding more control over recording, camera, microphone, and post-processing.
 
-The app has been converted from a pure web app to an Electron app to enable more reliable global mouse/keyboard event tracking during recording and now uses a native Rust backend for desktop capture and recording.
+The application uses an Electron frontend with a native Rust backend to enable reliable global mouse/keyboard tracking and high-performance desktop capture.
 
-## Added features
+## Feature Gallery
 
-- More camera controls
-- More microphone controls
-- Native screen/window capture and recording via Rust instead of the browser MediaRecorder API
-- Post-processing stage for recorded clips
-  - Zoom/spotlight effects centered on mouse clicks
-  - Ability to change and emphasize the mouse cursor during playback
-- Optimized rendering/export pipeline for smoother previews and more reliable output
+Explore all features with interactive screenshots: **[Features Gallery](https://erkamkavak.github.io/screen-recorder/)**
 
-## Technology used
+[![Feature Gallery](docs/media/selection-preview.png)](https://erkamkavak.github.io/screen-recorder/)
 
-- The UI is built using [Svelte](https://svelte.dev/).
-- Native desktop capture and recording is implemented in [Rust](https://www.rust-lang.org/) and exposed to the app via [napi-rs](https://napi.rs/).
-- Uses [xcap](https://crates.io/crates/xcap) for cross-platform screen and window capture.
-- Uses global mouse tracking (e.g. `mouse_position`, `rdev`) to record cursor position, button state, and cursor shape for use in post-processing.
-- Uses [`MediaDevices` API](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices) for capturing webcam and microphone.
-- Uses [`AudioContext` API](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext) for audio visualizations.
-- Uses HTML canvas for drawing the video and audio visualizations and for feeding frames into the rendering pipeline.
+## Features
+
+### Recording
+
+- **Native Capture:** Screen and window capture implemented in Rust for improved performance and reliability.
+- **Selection & Preview:** Screen share source selection with a live preview during the recording session.
+- **Webcam Integration:** Camera capture with a draggable overlay and various layout controls.
+- **Audio Handling:** Microphone capture and integrated audio processing.
+- **Notes Overlay:** Support for multiple notes during recording with shortcut-based switching.
+- **Floating Controls:** External recorder overlay allowing start/stop actions while focused on other applications.
+- **Screenshot Export:** One-click functionality to export a preview screenshot.
+- **Project Management:** Projects list to store and reopen previous recordings.
+
+### Editing & Review
+
+- **Review Workflow:** Dedicated post-processing stage with a timeline, segment management, and trimming.
+- **Smart Zoom:** Click-to-zoom functionality and timeline-based zoom events with cursor-following logic.
+- **Cursor Customization:** Options to highlight or replace the cursor, including support for importing custom cursor packs.
+- **Visual Styling:** Customizable backgrounds (solids, gradients, images) and visual themes.
+- **Captions:** Automated transcription pipeline with adjustable caption styling (size, color, visibility).
+
+### Export
+
+- **Export Options:** Pipeline supporting MP4 (H.264), WebM (VP9) formats.
+- **Presets:** Predefined resolution and frame-rate settings for exported files.
+- **Render Control:** Real-time render progress tracking with support for canceling operations.
+
+## Technology Stack
+
+- **UI:** built using [Svelte](https://svelte.dev/).
+- **Desktop Integration:** [Electron](https://www.electronjs.org/).
+- **Native Layer:** [Rust](https://www.rust-lang.org/) via [napi-rs](https://napi.rs/) using [xcap](https://crates.io/crates/xcap) for cross-platform capture.
+- **Rendering:** Canvas-based pipeline utilizing [WebCodecs](https://developer.mozilla.org/en-US/docs/Web/API/WebCodecs_API).
 
 ## Prerequisites
 
-- Node.js and pnpm installed
+- Node.js (v18+) and pnpm
 - Rust toolchain (for building the native module)
-- `ffmpeg` available on your PATH (used for encoding the recorded video)
+- `ffmpeg` available on your PATH
 
 ## Running locally
 
@@ -41,11 +58,11 @@ pnpm build:native
 pnpm dev
 ```
 
-### Platform support / limitations
+## Platform Support
 
-- Developed and tested primarily on **Linux** (X11) and **Windows**.
-- macOS is **not tested** and may require additional work or permissions.
-- The **mouse cursor shape/change feature is currently only supported on Linux X11**; other platforms will fall back to a simpler cursor experience.
+- Developed and tested primarily on **Linux (X11)** and **Windows**.
+- macOS support is experimental.
+- On **Linux**, mouse cursor shape tracking currently requires **X11**.
 
 ### Linux system requirements
 
