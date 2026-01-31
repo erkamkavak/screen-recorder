@@ -196,43 +196,46 @@ fn init_available_models() {
         },
     );
 
-    models.insert(
-        "parakeet-tdt-0.6b-v2".to_string(),
-        ModelInfoInternal {
-            id: "parakeet-tdt-0.6b-v2".to_string(),
-            name: "Parakeet V2".to_string(),
-            description: "English only. The best model for English speakers.".to_string(),
-            filename: "parakeet-tdt-0.6b-v2-int8".to_string(),
-            url: Some("https://blob.handy.computer/parakeet-v2-int8.tar.gz".to_string()),
-            size_mb: 473,
-            is_downloaded: false,
-            is_downloading: false,
-            partial_size: 0,
-            is_directory: true,
-            engine_type: EngineType::Parakeet,
-            accuracy_score: 0.85,
-            speed_score: 0.85,
-        },
-    );
+    #[cfg(feature = "parakeet")]
+    {
+        models.insert(
+            "parakeet-tdt-0.6b-v2".to_string(),
+            ModelInfoInternal {
+                id: "parakeet-tdt-0.6b-v2".to_string(),
+                name: "Parakeet V2".to_string(),
+                description: "English only. The best model for English speakers.".to_string(),
+                filename: "parakeet-tdt-0.6b-v2-int8".to_string(),
+                url: Some("https://blob.handy.computer/parakeet-v2-int8.tar.gz".to_string()),
+                size_mb: 473,
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: true,
+                engine_type: EngineType::Parakeet,
+                accuracy_score: 0.85,
+                speed_score: 0.85,
+            },
+        );
 
-    models.insert(
-        "parakeet-tdt-0.6b-v3".to_string(),
-        ModelInfoInternal {
-            id: "parakeet-tdt-0.6b-v3".to_string(),
-            name: "Parakeet V3".to_string(),
-            description: "Fast and accurate".to_string(),
-            filename: "parakeet-tdt-0.6b-v3-int8".to_string(),
-            url: Some("https://blob.handy.computer/parakeet-v3-int8.tar.gz".to_string()),
-            size_mb: 478,
-            is_downloaded: false,
-            is_downloading: false,
-            partial_size: 0,
-            is_directory: true,
-            engine_type: EngineType::Parakeet,
-            accuracy_score: 0.80,
-            speed_score: 0.85,
-        },
-    );
+        models.insert(
+            "parakeet-tdt-0.6b-v3".to_string(),
+            ModelInfoInternal {
+                id: "parakeet-tdt-0.6b-v3".to_string(),
+                name: "Parakeet V3".to_string(),
+                description: "Fast and accurate".to_string(),
+                filename: "parakeet-tdt-0.6b-v3-int8".to_string(),
+                url: Some("https://blob.handy.computer/parakeet-v3-int8.tar.gz".to_string()),
+                size_mb: 478,
+                is_downloaded: false,
+                is_downloading: false,
+                partial_size: 0,
+                is_directory: true,
+                engine_type: EngineType::Parakeet,
+                accuracy_score: 0.80,
+                speed_score: 0.85,
+            },
+        );
+    }
 
     drop(models);
     update_download_status();

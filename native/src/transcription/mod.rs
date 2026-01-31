@@ -120,7 +120,10 @@ fn get_job(job_id: &str) -> Option<TranscriptionJobSnapshot> {
 
 #[napi]
 pub fn transcription_list_providers() -> Vec<String> {
-    vec!["soniox".to_string(), "parakeet".to_string(), "local".to_string(), "noop".to_string()]
+    let mut providers = vec!["soniox".to_string(), "local".to_string(), "noop".to_string()];
+    #[cfg(feature = "parakeet")]
+    providers.push("parakeet".to_string());
+    providers
 }
 
 #[napi]
@@ -174,6 +177,7 @@ pub fn transcription_submit(req: SubmitTranscriptionRequest) -> Result<Transcrip
     TOKIO_RUNTIME.spawn(async move {
         let run_res = match provider_for_job.as_str() {
             "soniox" => providers::soniox::run_soniox(job_id_clone.clone(), req).await,
+            #[cfg(feature = "parakeet")]
             "parakeet" => providers::local::run_parakeet(job_id_clone.clone(), req).await,
             "local" => providers::local::run_local(job_id_clone.clone(), req).await,
             "noop" => run_noop(job_id_clone.clone(), req).await,

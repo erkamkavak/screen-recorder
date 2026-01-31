@@ -1,6 +1,8 @@
 use std::path::Path;
 
 use log::info;
+
+#[cfg(feature = "parakeet")]
 use transcribe_rs::{
     engines::parakeet::{ParakeetEngine, ParakeetInferenceParams, ParakeetModelParams},
     TranscriptionEngine,
@@ -41,6 +43,7 @@ fn read_audio_samples(file_path: &str) -> Result<Vec<f32>, String> {
     Ok(samples)
 }
 
+#[cfg(feature = "parakeet")]
 pub(crate) async fn run_parakeet(
     job_id: String,
     req: SubmitTranscriptionRequest,
@@ -144,6 +147,14 @@ pub(crate) async fn run_parakeet(
     })
 }
 
+#[cfg(not(feature = "parakeet"))]
+pub(crate) async fn run_parakeet(
+    _job_id: String,
+    _req: SubmitTranscriptionRequest,
+) -> Result<Transcript, String> {
+    Err("Parakeet transcription is not available in this build. Please use Soniox for cloud transcription.".to_string())
+}
+
 pub(crate) async fn run_local(
     job_id: String,
     req: SubmitTranscriptionRequest,
@@ -157,7 +168,7 @@ pub(crate) async fn run_local(
         .ok_or_else(|| format!("Unknown model: {}", model_id))?;
 
     match engine_type {
-        EngineType::Whisper => Err("Whisper support is not currently available. Please use Parakeet models.".to_string()),
+        EngineType::Whisper => Err("Whisper support is not currently available. Please use Soniox for cloud transcription.".to_string()),
         EngineType::Parakeet => run_parakeet(job_id, req).await,
     }
 }

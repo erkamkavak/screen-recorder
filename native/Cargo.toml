@@ -6,10 +6,14 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+default = []
+parakeet = ["transcribe-rs/parakeet"]
+
 [dependencies]
 napi = { version = "2", features = ["napi8", "async", "serde-json"] }
 napi-derive = "2"
-xcap = { version = "0.7.1", default-features = false, features = ["x11"] }
+xcap = "0.7.1"
 image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
 base64 = "0.21"
 tokio = { version = "1", features = ["sync", "time", "rt-multi-thread", "macros", "fs"] }
@@ -23,7 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 uuid = { version = "1", features = ["v4"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "multipart", "rustls-tls", "stream"] }
-transcribe-rs = { version = "0.2", features = ["parakeet"], default-features = false }
+transcribe-rs = { version = "0.2", default-features = false, optional = true }
 flate2 = "1.0"
 tar = "0.4"
 futures-util = "0.3"
