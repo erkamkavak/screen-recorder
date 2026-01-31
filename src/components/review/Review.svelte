@@ -171,7 +171,6 @@
       {theme}
       {background}
       snapshot={currentSnapshot}
-      transcript={$transcriptionResult}
       {pointerIconImageUrl}
       {pointerIconPressedImageUrl}
       bind:duration={videoDuration}
@@ -204,7 +203,7 @@
         {hasWebcam}
         {hasAudio}
         {audioFilePath}
-        captionsAvailable={!!$transcriptionResult?.segments?.length}
+        captionsAvailable={!!$transcriptionResult?.result?.segments?.length}
         {renderFormatOptions}
         {resolutionPresets}
         {frameRatePresets}
