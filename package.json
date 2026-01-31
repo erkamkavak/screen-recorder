@@ -1,7 +1,7 @@
 {
   "name": "clipflow",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "description": "Clip Flow - High-fidelity screen recording and editing studio",
   "author": "erkamkavak",
@@ -59,7 +59,7 @@
   },
   "main": "electron/main.cjs",
   "build": {
-    "icon": "resources/icon.svg",
+    "icon": "resources/icon.png",
     "publish": [
       {
         "provider": "github",
@@ -97,7 +97,7 @@
           ]
         }
       ],
-      "icon": "resources/icon.svg",
+      "icon": "resources/icon.png",
       "category": "AudioVideo",
       "executableName": "ClipFlow",
       "desktop": {
@@ -112,12 +112,6 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
           "target": "portable",
           "arch": [
             "x64"
@@ -125,7 +119,7 @@
         }
       ],
       "icon": "resources/icon.png",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-${version}-portable.${ext}"
     },
     "mac": {
       "target": [
@@ -145,7 +139,7 @@
         }
       ],
       "category": "public.app-category.productivity",
-      "icon": "resources/icon.svg",
+      "icon": "resources/icon.png",
       "artifactName": "${productName}-${arch}.${ext}"
     },
     "nsis": {
